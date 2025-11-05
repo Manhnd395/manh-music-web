@@ -5,8 +5,20 @@ import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js
  * 1. LOCAL DEV → config.js (window.)
  * 2. DEPLOY   → Netlify / Vercel env vars (process.env)
  */
-const SUPABASE_URL   = window.SUPABASE_URL   ?? process.env.SUPABASE_URL;
-const SUPABASE_ANON_KEY = window.SUPABASE_ANON_KEY ?? process.env.SUPABASE_ANON_KEY;
+// Wait for config to be loaded
+function getConfig() {
+    if (!window.SUPABASE_URL || !window.SUPABASE_ANON_KEY) {
+        throw new Error('Supabase configuration not found. Make sure config.js is loaded.');
+    }
+    return {
+        url: window.SUPABASE_URL,
+        key: window.SUPABASE_ANON_KEY
+    };
+}
+
+const config = getConfig();
+const SUPABASE_URL = config.url;
+const SUPABASE_ANON_KEY = config.key;
 
 console.log('DEBUG: SUPABASE_URL:', SUPABASE_URL);
 console.log('DEBUG: ANON_KEY length:', SUPABASE_ANON_KEY?.length ?? 'undefined');
