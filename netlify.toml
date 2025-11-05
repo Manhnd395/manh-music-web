@@ -1,3 +1,13 @@
 [build]
   publish = "public"
-  command = "echo 'window.SUPABASE_URL = \"'$SUPABASE_URL'\";\nwindow.SUPABASE_ANON_KEY = \"'$SUPABASE_ANON_KEY'\";\nwindow.GROQ_API_KEY = \"'$GROQ_API_KEY'\";' > public/scripts/config.js"
+  # Create a runtime config file for the client from Netlify env vars.
+  # We must tell Netlify's secrets scanner to omit these keys/paths if you accept
+  # that the values will be client-visible. If you do not accept that, implement
+  # a server-side proxy or Netlify Function instead (Option A in the logs).
+  command = "mkdir -p public/scripts && cat > public/scripts/config.js <<'EOL'\nwindow.SUPABASE_URL = '${SUPABASE_URL}';\nwindow.SUPABASE_ANON_KEY = '${SUPABASE_ANON_KEY}';\nwindow.GROQ_API_KEY = '${GROQ_API_KEY:-}';\nEOL"
+
+[build.environment]
+# Tell Netlify's scanner to ignore these env var names (Option B)
+SECRETS_SCAN_OMIT_KEYS = "SUPABASE_ANON_KEY,SUPABASE_URL,GROQ_API_KEY"
+# And also omit the generated file path
+SECRETS_SCAN_OMIT_PATHS = "public/scripts/config.js"
