@@ -4,7 +4,8 @@
   # We must tell Netlify's secrets scanner to omit these keys/paths if you accept
   # that the values will be client-visible. If you do not accept that, implement
   # a server-side proxy or Netlify Function instead (Option A in the logs).
-  command = "mkdir -p public/scripts && cat > public/scripts/config.js <<'EOL'\nwindow.SUPABASE_URL = '${SUPABASE_URL}';\nwindow.SUPABASE_ANON_KEY = '${SUPABASE_ANON_KEY}';\nwindow.GROQ_API_KEY = '${GROQ_API_KEY:-}';\nEOL"
+  # Validate env vars before writing. If missing, fail the build with a clear message.
+  command = "if [ -z \"${SUPABASE_URL}\" ] || [ -z \"${SUPABASE_ANON_KEY}\" ]; then echo 'ERROR: SUPABASE_URL or SUPABASE_ANON_KEY is not set in Netlify environment variables.'; exit 1; fi; mkdir -p public/scripts && cat > public/scripts/config.js <<'EOL'\nwindow.SUPABASE_URL = '${SUPABASE_URL}';\nwindow.SUPABASE_ANON_KEY = '${SUPABASE_ANON_KEY}';\nwindow.GROQ_API_KEY = '${GROQ_API_KEY:-}';\nEOL"
 
 [build.environment]
 # Tell Netlify's scanner to ignore these env var names (Option B)
