@@ -1,0 +1,129 @@
+/* ==================================== */
+/* base.css - Thiết lập lại và Font chữ */
+/* ==================================== */
+
+/* Thiết lập lại kiểu mặc định (Reset CSS) */
+* {
+    /* Đảm bảo tính toán padding và border bên trong kích thước phần tử */
+    box-sizing: border-box; 
+}
+
+html, body {
+    height: 100%;
+    width: 100%;
+    margin: 0;
+    padding: 0;
+    /* Sử dụng font chữ dễ đọc */
+    font-family: 'Inter', 'Helvetica Neue', Helvetica, Arial, sans-serif; 
+    line-height: 1.6;
+    /* Sử dụng biến màu từ theme.css */
+    color: var(--text-primary); 
+    background-color: var(--background-color);
+}
+
+/* Loại bỏ gạch chân mặc định của link */
+a {
+    text-decoration: none;
+    color: inherit;
+    transition: color 0.2s;
+}
+
+/* Tiêu đề */
+h1, h2, h3, h4, h5, h6 {
+    margin: 0 0 10px 0;
+    font-weight: 600;
+}
+
+h2 {
+    font-size: 1.5em;
+    padding-bottom: 5px;
+    /* Sử dụng biến màu để đường phân cách đồng bộ với theme */
+    border-bottom: 1px solid var(--border-color); 
+    margin-bottom: 20px;
+}
+
+/* Buttons */
+button {
+    cursor: pointer;
+    padding: 8px 15px;
+    border: none;
+    border-radius: 4px;
+    font-size: 1em;
+    /* Sử dụng biến màu từ theme.css */
+    background-color: var(--primary-color);
+    color: var(--text-light);
+    transition: background-color 0.2s;
+}
+
+button:hover {
+    filter: brightness(1.1);
+}
+
+/* Input Fields */
+input[type="text"],
+input[type="url"],
+input[type="file"] {
+    padding: 10px;
+    border: 1px solid var(--border-color);
+    border-radius: 5px;
+    background: var(--input-bg);
+    color: var(--text-primary);
+    width: 100%; 
+}
+
+/* Các phần tử chung */
+.avatar {
+    /* Được dùng trong Main Header */
+    width: 35px;
+    height: 35px;
+    border-radius: 50%;
+    object-fit: cover;
+}
+
+.current-avatar-preview {
+    /* Ảnh bên trong khung */
+    width: 100%; /* Chiếm hết chiều rộng của container */
+    height: 100%; /* Chiếm hết chiều cao của container */
+    object-fit: cover; /* Quan trọng: Đảm bảo ảnh được crop và fill khung */
+}
+.avatar-display-container {
+    /* Đặt kích thước cố định cho khung chứa ảnh (ví dụ 120x120px) */
+    width: 120px; 
+    height: 120px;
+    border-radius: 50%; /* Làm tròn khung */
+    overflow: hidden; /* QUAN TRỌNG: Cắt ảnh nếu ảnh to hơn khung */
+    margin-bottom: 10px;
+    border: 3px solid var(--primary-color, #1db954); 
+}
+
+.profile-avatar-section {
+    display: flex;
+    flex-direction: column;
+    align-items: center; /* Căn giữa ảnh và nút upload */
+    margin-bottom: 20px;
+}
+.btn-secondary, .change-avatar-btn {
+    /* Đảm bảo nó hoạt động như một nút và có màu nền khác biệt */
+    display: inline-block; /* Quan trọng để áp dụng padding/margin */
+    padding: 8px 15px;
+    border: none;
+    border-radius: 4px;
+    font-size: 1em;
+    cursor: pointer;
+    text-align: center; /* Quan trọng cho thẻ label */
+    
+    /* Thiết lập màu sắc khác biệt (Sử dụng biến màu cho tính đồng bộ) */
+    background-color: var(--secondary-color, #555); /* Màu xám, hoặc biến theme */
+    color: var(--text-light); /* Chữ trắng */
+    transition: background-color 0.2s;
+}
+
+.btn-secondary:hover, .change-avatar-btn:hover {
+    filter: brightness(1.2); /* Sáng hơn khi hover */
+}
+
+/* --- Style cho Form Profile --- */
+/* Đảm bảo input type="file" ẩn đi */
+/* input[type="file"] {
+    display: none;
+} */

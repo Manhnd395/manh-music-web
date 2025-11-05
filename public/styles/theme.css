@@ -1,0 +1,51 @@
+/* ==================================== */
+/* theme.css - Định nghĩa biến màu sắc */
+/* ==================================== */
+
+/* --- DARK THEME (Mặc định) --- */
+.dark-theme {
+    /* Màu nền */
+    --background-color: #121212; /* Nền tối chính */
+    --sidebar-bg: #000000; /* Sidebar tối hơn một chút */
+    --player-bg: #282828; /* Player bar */
+    --card-bg: #181818; /* Nền cho card/mục ở trang chủ */
+    --card-bg-darker: #242424; /* Nền cho các item trong danh sách (tracks) */
+    --card-bg-hover: #333333; /* Màu hover cho các item */
+
+    /* Màu chữ */
+    --text-primary: #ffffff; /* Chữ chính */
+    --text-secondary: #b3b3b3; /* Chữ phụ, mô tả, link không active */
+    --text-light: #ffffff; /* Màu chữ cho các nút (button) */
+
+    /* Màu chủ đạo (Accent) */
+    --primary-color: #1db954; /* Màu xanh lá cây (nhấn mạnh hành động) */
+    --primary-color-hover: #1ed760;
+
+    /* Khác */
+    --border-color: #383838; /* Màu đường viền phân chia */
+    --input-bg: #333333; /* Nền cho input fields */
+    --danger-color: #f44336; /* Màu đỏ cho lỗi */
+}
+
+
+/* --- LIGHT THEME (Có thể phát triển thêm sau này) --- */
+/* .light-theme {
+    --background-color: #f0f0f0;
+    --sidebar-bg: #ffffff;
+    --player-bg: #e0e0e0;
+    --card-bg: #ffffff;
+    --card-bg-darker: #f5f5f5;
+    --card-bg-hover: #e6e6e6;
+
+    --text-primary: #121212;
+    --text-secondary: #535353;
+    --text-light: #ffffff;
+
+    --primary-color: #1db954; 
+    --primary-color-hover: #1ed760;
+
+    --border-color: #cccccc;
+    --input-bg: #ffffff;
+    --danger-color: #f44336;
+}
+*/

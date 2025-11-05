@@ -1,0 +1,17 @@
+{
+  "name": "final-music-web",
+  "version": "1.0.0",
+  "description": "Manh-music",
+  "main": "app.js",
+  "scripts": {
+    "start": "http-server -p 8080",
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.0.0",
+    "express": "^5.1.0",
+    "music-metadata-browser": "^2.5.10"
+  }
+}

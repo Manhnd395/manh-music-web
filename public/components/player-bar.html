@@ -1,0 +1,26 @@
+<div class="player-bar-container">
+    <div class="track-info">
+        <img id="trackCover" src="/assets/default-cover.webp" alt="Track cover" />
+        <div class="track-meta">
+            <div class="track-title" id="trackTitle">Chưa chọn bài hát</div>
+            <div class="track-artist" id="trackArtist">Nghệ sĩ</div>
+        </div>
+    </div>
+
+    <div class="player-controls">
+        <button id="prevBtn" title="Previous"><i class="fas fa-step-backward"></i></button>  
+        <button id="playPauseBtn" title="Play/Pause"><i class="fas fa-play"></i></button>  
+        <button id="nextBtn" title="Next"><i class="fas fa-step-forward"></i></button>  
+        <button id="shuffleBtn" title="Shuffle"><i class="fas fa-random"></i></button>
+        <button id="repeatBtn" title="Repeat"><i class="fas fa-redo-alt"></i></button>  
+        <div class="progress-container">
+        <span id="currentTime">0:00</span>
+            <input type="range" id="progressBar" min="0" max="100" value="0" class="progress-bar">
+        <span id="duration">0:00</span>
+        </div>
+    </div>
+
+    <div class="volume-control">
+        🔊 <input type="range" min="0" max="100" value="50" id="volumeSlider" />
+    </div>
+</div>

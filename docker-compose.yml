@@ -1,0 +1,19 @@
+version: '3.8'
+
+services:
+  web:
+    build: .
+    ports:
+      - "8080:8080"
+    volumes:
+      - .:/app
+      - node_modules:/app/node_modules  # Giữ node_modules từ build
+    restart: unless-stopped
+    environment:
+      - NODE_ENV=development
+    # BẮT BUỘC VITE TẢI LẠI TẤT CẢ
+    command: >
+      sh -c "npx vite --host 0.0.0.0 --port 8080 --force"
+
+volumes:
+  node_modules:

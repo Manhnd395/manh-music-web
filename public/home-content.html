@@ -1,0 +1,55 @@
+<section id="home-section" class="main-section" style="display: block;">
+    <h2>Danh sách phát của tôi</h2>
+    <button id="createPlaylistBtn" class="btn-primary">
+        + Tạo Danh Sách Phát Mới
+    </button>
+    
+    <div id="playlistGrid" class="playlist-grid"></div> 
+    
+    <h3>Các bài hát đã phát gần đây</h3>
+    <div id="historyTrackList" class="track-list"></div>
+</section>
+
+<section id="detail-playlist-section" class="main-section" style="display: none;">
+    <div id="playlistHeader" class="playlist-header"></div>
+    <div id="trackList" class="track-list"></div>
+</section>
+
+<section id="search-section" class="main-section" style="display: none;">
+    <h2>Tìm kiếm Bài hát</h2>
+    <input type="text" id="searchInput" placeholder="Tìm kiếm bài hát, nghệ sĩ..." oninput="searchTracks(this.value)" />
+    <div id="searchList" class="track-list">
+        <p class="empty-message">Nhập từ khóa để bắt đầu tìm kiếm.</p>
+    </div>
+</section>
+
+<section id="uploads-section" class="main-section" style="display: none;">
+    <h2>Danh sách nhạc đã tải lên</h2>
+    <div id="myUploadsList" class="track-list"></div>
+</section>
+
+<section id="recommend-section" class="main-section" style="display: none;">
+    <h2>Gợi ý cho bạn</h2>
+    <div id="recommendList" class="track-list"></div>
+</section>
+
+<section id="upload-section" class="main-section" style="display: none;">
+    <h2>Tải nhạc lên</h2>
+    <form id="upload-form" onsubmit="event.preventDefault(); window.uploadTrack();"> 
+        <div class="form-group">
+            <label for="trackFile">File nhạc (*.mp3, *.wav): <span class="required">*</span></label>
+            <input type="file" id="trackFile" class="custom-file-input" accept="audio/*" required />
+        </div>
+        <div class="form-group">
+            <input type="text" id="trackTitleInput" placeholder="Tiêu đề bài hát" required />
+        </div>
+        <div class="form-group">
+            <input type="text" id="trackArtistInput" placeholder="Nghệ sĩ" required />
+        </div>
+        <div class="form-group">
+            <label for="coverFileInput">Ảnh bìa (Tùy chọn):</label>
+            <input type="file" id="coverFileInput" class="custom-file-input" accept="image/*" />
+        </div>
+        <button type="submit" id="uploadTrackBtn">Tải lên</button>
+    </form>
+</section>

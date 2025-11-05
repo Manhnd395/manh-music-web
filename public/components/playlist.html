@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Chi tiết Playlist</title>
+  <link rel="stylesheet" href="/styles/base.css" />
+  <link rel="stylesheet" href="/styles/layout.css" />
+  <link rel="stylesheet" href="/styles/theme.css" />
+</head>
+<body>
+  <div class="dashboard">
+    <!-- Sidebar -->
+    <aside class="sidebar-left"></aside>
+
+    <!-- Main content -->
+    <main class="main-content">
+      <div id="playlistHeader" class="playlist-header"></div>
+      <div id="trackList" class="track-list"></div>
+    </main>
+  </div>
+
+  <!-- Player bar -->
+  <footer class="player-bar"></footer>
+
+  <!-- Supabase SDK -->
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+
+  <!-- Scripts - LOAD THEO ĐÚNG THỨ TỰ -->
+  <script src="/scripts/ui.js" type = "module"></script>
+  <script src="/scripts/playlist.js" type="module"></script>
+</body>
+</html>

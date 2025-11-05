@@ -1,0 +1,497 @@
+/* ==================================== */
+/* player.css - Định dạng chi tiết các thành phần UI */
+/* ==================================== */
+
+/* --- 1. Sidebar Navigation (Chi tiết) --- */
+
+.sidebar-nav {
+    padding: 20px 10px;
+    height: 100%; /* QUAN TRỌNG: Đảm bảo sidebar-nav chiếm hết chiều cao */
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between; /* Đẩy logout xuống dưới */
+    /* Loại bỏ padding nếu nó gây tràn */
+    padding-bottom: 0; 
+    padding-top: 0; 
+}
+
+.app-logo {
+    color: var(--primary-color); /* Logo dùng màu nhấn */
+    font-size: 1.8em;
+    font-weight: 900;
+    margin-bottom: 30px;
+    padding-left: 10px;
+    letter-spacing: -0.5px;
+}
+
+.nav-tabs {
+    list-style: none;
+    padding: 0;
+    flex-grow: 1; 
+    margin: 0;
+}
+
+.nav-tabs li a {
+    display: block;
+    padding: 10px 10px;
+    margin: 5px 0;
+    border-radius: 4px;
+    color: var(--text-secondary);
+    transition: background-color 0.2s, color 0.2s;
+    font-weight: 500;
+    font-size: 1.1em;
+}
+
+.nav-tabs li a:hover {
+    color: var(--text-primary);
+    background-color: var(--card-bg-darker);
+}
+
+.nav-tabs li a.active {
+    background-color: var(--card-bg-darker);
+    color: var(--text-primary);
+    font-weight: 700;
+}
+
+.sidebar-bottom {
+    padding-top: 15px;
+    border-top: 1px solid var(--border-color);
+}
+
+.sidebar-bottom a {
+    display: block;
+    padding: 10px;
+    color: var(--text-secondary);
+}
+
+/* --- 2. Main Header (Profile và Actions) --- */
+
+.main-header {
+    display: flex;
+    justify-content: space-between; 
+    align-items: center;
+    padding: 0 0 20px 0;
+    /* Dùng sticky để header profile luôn ở trên cùng khi cuộn */
+    position: sticky; 
+    top: 0; 
+    z-index: 500;
+    background-color: var(--background-color); 
+}
+
+.profile-wrapper {
+    /* GIỮ: Các thuộc tính căn chỉnh và khoảng cách */
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    
+    /* SỬA: Loại bỏ nền đen và bo góc */
+    background-color: transparent; /* Đặt nền trong suốt */
+    padding: 0;                    /* Loại bỏ padding */
+    border-radius: 0;              /* Loại bỏ bo góc */
+    border: none;                  /* Đảm bảo không có viền */
+    
+    /* GIỮ: Thuộc tính hành vi */
+    cursor: pointer;
+    position: relative;
+    
+    /* OPTIONAL: Thêm hiệu ứng hover nhẹ nếu muốn */
+    transition: background-color 0.2s ease;
+}
+
+/* Tùy chọn: Thêm hiệu ứng hover để người dùng biết có thể nhấp vào */
+.profile-wrapper:hover {
+    /* Đổi màu nền nhẹ khi hover để xác nhận khả năng nhấp */
+    background-color: rgba(255, 255, 255, 0.05); 
+    /* Có thể giữ lại bo góc khi hover để đẹp hơn */
+    border-radius: 50px; 
+    padding: 5px 10px; /* Thêm lại padding khi hover */
+}
+
+#userName {
+    font-weight: bold;
+}
+
+/* --- 3. Player Bar (Chi tiết) --- */
+
+.player-bar {
+    /* Được định nghĩa layout cơ bản trong layout.css */
+    padding: 0 20px;
+    gap: 20px;
+    align-items: center;
+    justify-content: space-between;
+}
+
+.player-bar-container {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    width: 100%; 
+    height: 100%;
+}
+
+.progress-container .progress-bar {
+    flex-grow: 1; /* Thanh trượt chiếm hết không gian còn lại */
+}
+
+.player-controls {
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    width: auto;
+    gap: 12px;
+}
+
+.player-controls button {
+    background: none;
+    border: none;
+    color: var(--text-secondary, #b3b3b3);  
+    font-size: 18px;  
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;  
+    cursor: pointer;
+    transition: color 0.2s ease, background-color 0.2s ease;  
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.player-controls button:hover {
+    color: var(--primary-color, #1DB954);
+    background-color: rgba(29, 185, 84, 0.1);
+    filter: none; /* Loại bỏ filter brightness của base.css */
+}
+
+.player-controls button.active {  
+    color: var(--primary-color, #1DB954);
+}
+
+@media (max-width: 768px) {
+    .player-controls button {
+        width: 40px;
+        height: 40px;
+        font-size: 20px;
+    }
+}
+
+/* Định dạng đặc biệt cho nút Play/Pause chính */
+#playPauseBtn i {
+    font-size: 20px;
+}
+
+#shuffleBtn i.fa-random {
+    font-variation-settings: 'wght' 300; 
+}
+
+#repeatBtn i.fa-redo-alt {
+    transform: rotate(0deg);  
+}
+
+.player-bar-track-info {
+    display: flex;
+    align-items: center;
+    width: 25%; 
+    max-width: 250px;
+    gap: 10px;
+    width: 200px; 
+    margin-left: 0; 
+    padding-left: 0;
+}
+
+.player-track-details {
+    display: flex;
+    flex-direction: column;
+    font-size: 0.9em;
+}
+
+/* Thanh trượt (Volume và Tiến trình) */
+input[type="range"] {
+    -webkit-appearance: none;
+    width: 100px;
+    height: 4px;
+    background: var(--border-color);
+    border-radius: 2px;
+    transition: background 0.2s;
+}
+
+input[type="range"]::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    background: var(--text-primary);
+    cursor: pointer;
+}
+
+.volume-control {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    width: 15%; /* Giới hạn chiều rộng */
+    justify-content: flex-end; /* Căn chỉnh sang phải */
+}
+
+/* track-info */
+.track-info {
+    display: flex;
+    align-items: center;
+    gap: 15px;
+    width: 25%; 
+    flex-shrink: 0;
+}
+
+.track-info img#trackCover {
+    width: 50px;
+    height: 50px;
+    object-fit: cover;
+}
+
+.track-meta {
+    line-height: 1.2;
+}
+
+.track-artist {
+    color: var(--text-secondary);
+    font-size: 0.9em;
+}
+
+/* --- 4. Định dạng Section Detail Playlist và Upload Form --- */
+
+.playlist-header {
+    display: flex;
+    align-items: flex-end; 
+    justify-content: space-between;
+    padding: 20px 0;
+    margin-bottom: 20px;
+    border-bottom: 1px solid var(--border-color);
+    position: relative;
+}
+
+.playlist-info {
+    flex: 1;
+    margin-right: 20px;
+}
+
+.playlist-info h1 {
+    font-size: 2em;
+    margin: 0 0 5px 0;
+    word-break: break-word;
+}
+
+.playlist-info p {
+    color: var(--text-secondary);
+    margin: 0;
+}
+
+.edit-playlist-btn {
+    background: none;
+    border: 1px solid var(--border-color);
+    color: var(--text-primary);
+    padding: 8px 16px;
+    border-radius: 20px;
+    cursor: pointer;
+    transition: background-color 0.2s;
+    margin-left: 10px;
+}
+
+.edit-playlist-btn:hover {
+    background-color: var(--primary-color-hover);
+}
+
+.edit-playlist-btn.hidden {
+    display: none;
+}
+
+.edit-form {
+    display: none;  /* Ẩn mặc định */
+    flex-direction: column;
+    gap: 10px;
+    margin-top: 10px;
+    padding: 15px;
+    background: var(--card-bg);
+    border-radius: 8px;
+    border: 1px solid var(--border-color);
+}
+
+.edit-form.active {
+    display: flex;
+}
+
+.edit-input {
+    padding: 8px;
+    border: 1px solid var(--border-color);
+    border-radius: 4px;
+    background: var(--background-color);
+    color: var(--text-primary);
+}
+
+.edit-color {
+    width: 40px;
+    height: 40px;
+    border: none;
+    border-radius: 50%;
+    cursor: pointer;
+}
+
+.edit-actions {
+    display: flex;
+    gap: 10px;
+    justify-content: flex-end;
+}
+
+.btn-save, .btn-cancel {
+    padding: 8px 16px;
+    border-radius: 20px;
+    cursor: pointer;
+    font-weight: bold;
+}
+
+.btn-save {
+    background: var(--primary-color);
+    color: white;
+    border: none;
+}
+
+.btn-cancel {
+    background: none;
+    border: 1px solid var(--border-color);
+    color: var(--text-primary);
+}
+
+.play-all-btn {
+    padding: 12px 25px;
+    font-size: 1.1em;
+    border-radius: 50px;
+    background-color: var(--primary-color);
+    color: var(--text-light);
+    font-weight: bold;
+    order: 3;
+    flex-shrink: 0;
+}
+
+#upload-form {
+    display: flex;
+    flex-direction: column;
+    gap: 15px;
+    max-width: 400px;
+    padding: 20px;
+    background: var(--card-bg);
+    border-radius: 10px;
+}
+
+/* --- 5. Tùy chỉnh Icon Font (Giả định) --- */
+/* Nếu bạn dùng font icon như Font Awesome, bạn sẽ định nghĩa ở đây */
+/* Ví dụ: .icon-play { content: '\f04b'; font-family: 'Font Awesome Solid'; } */
+
+/* --- 6. Modal Styles (Thêm Để Fix Lỗi Modal Không Hiện) --- */
+.modal-overlay {
+    position: fixed; /* Overlay toàn màn */
+    top: 0;
+    left: 0;
+    width: 100vw;
+    height: 100vh;
+    background: rgba(0, 0, 0, 0.5); /* Dim background */
+    display: none; /* Mặc định ẩn, JS sẽ set flex khi mở */
+    justify-content: center;
+    align-items: center;
+    z-index: 2000; /* Cao hơn player-bar (1000) và header (500) */
+    overflow: auto; /* Cho phép cuộn nếu modal cao */
+}
+
+.modal-content {
+    background: var(--background-color); /* Nền từ theme */
+    padding: 20px;
+    border-radius: 8px;
+    width: 400px;
+    max-width: 90%;
+    position: relative; /* Để close-btn absolute */
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.2); /* Bóng cho nổi bật */
+}
+
+.profile-modal {
+    display: flex;
+    flex-direction: column;
+    align-items: center; /* Căn giữa nội dung */
+}
+
+.close-btn {
+    position: absolute;
+    top: 10px;
+    right: 10px;
+    font-size: 1.5em;
+    cursor: pointer;
+    color: var(--text-secondary);
+    transition: color 0.2s;
+}
+
+.close-btn:hover {
+    color: var(--text-primary);
+}
+
+.modal-title {
+    text-align: center;
+    font-size: 1.5em;
+    margin-bottom: 20px;
+    color: var(--text-primary);
+}
+
+.form-group {
+    width: 100%;
+    margin-bottom: 15px;
+}
+
+.form-group label {
+    display: block;
+    margin-bottom: 5px;
+    font-weight: bold;
+    color: var(--text-secondary);
+}
+
+.form-actions {
+    width: 100%;
+    display: flex;
+    justify-content: center;
+    margin-top: 10px;
+}
+
+.btn-primary {
+    background: var(--primary-color); /* Từ theme, fallback #1DB954 */
+    color: var(--text-light);
+    width: 100%;
+    padding: 10px;
+    font-weight: bold;
+}
+
+.btn-danger { /* Cho logout nếu uncomment */
+    background: var(--danger-color, #ff0000);
+    color: var(--text-light);
+}
+
+/* --- 7. Placeholder Styles (Thêm Để Hiển Thị Rõ Nếu Dữ Liệu Null) --- */
+input::placeholder {
+    color: var(--text-secondary);
+    font-style: italic;
+}
+
+/* Marquee effect cho tên bài hát dài (Player Bar - Sync với layout.css) */
+#trackTitle.marquee-container {
+    position: relative;
+    width: 100%;
+}
+
+#trackTitle.marquee-container .track-title-inner {
+    display: inline-block;
+    white-space: nowrap;
+    padding-right: 100%;  /* Gap rộng như layout */
+}
+
+/* Animation chỉ khi hover (sync keyframes từ layout) */
+#trackTitle.marquee-container:hover .track-title-inner {
+    animation: marquee 18s linear infinite;
+    animation-delay: 0.5s;
+}
+
+/* Pause khi không hover */
+#trackTitle.marquee-container:not(:hover) .track-title-inner {
+    animation-play-state: paused;
+}
