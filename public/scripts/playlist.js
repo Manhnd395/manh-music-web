@@ -449,3 +449,4 @@ window.deletePlaylist = async function(playlistId) {
 window.renderTracks = renderTracks;
 window.addTrackToPlaylist = window.addTrackToPlaylist;
 window.loadDetailPlaylist = window.loadDetailPlaylist;
+window.renderPlaylists = renderPlaylists;

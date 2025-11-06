@@ -13,18 +13,6 @@ window.loadComponent = async function(componentPath, targetElementId) {
         const html = await response.text();
         target.innerHTML = html;
         console.log(`Đã tải thành công component: ${componentPath}`);
-
-        // Đặc biệt: Sau khi load sidebar, gọi hàm khởi tạo logic
-        if (targetElementId === 'sidebar') {
-            // Đảm bảo Trang chủ được kích hoạt ngay sau khi sidebar load
-            const waitForApp = setInterval(() => {
-                if (window.appFunctions?.loadUserPlaylists) {
-                    clearInterval(waitForApp);
-                    window.appFunctions.loadUserPlaylists();
-                    console.log('Sidebar loaded → loadUserPlaylists called');
-                }
-            }, 100);
-        } 
         
         if (targetElementId === 'playerBar') {
             setTimeout(() => {
@@ -59,7 +47,6 @@ export async function loadHomeContent() {
         });
         homeSection.style.display = 'block';
         
-        // Load playlists (sẽ gọi renderPlaylists từ playlist.js)
         await window.appFunctions.loadUserPlaylists();
         
         // Load lịch sử bài hát
@@ -69,40 +56,7 @@ export async function loadHomeContent() {
         console.error('Lỗi load trang chủ:', error);
     }
 }
-// Hàm quản lý việc chuyển đổi nội dung chính (SPA Routing)
-window.switchTab = function(tabName, playlistId = null) {
-    // Ẩn tất cả section
-    document.querySelectorAll('.main-section').forEach(section => {
-        section.style.display = 'none';
-    });
 
-    let targetSection;
-
-    // Xác định section cần hiển thị
-    if (tabName === 'detail-playlist') {
-        targetSection = document.getElementById('detail-playlist-section');
-    } else {
-        targetSection = document.getElementById(tabName + '-section');
-    }
-
-    if (targetSection) {
-        targetSection.style.display = 'block';
-    }
-
-    if (tabName === 'recommend') {
-        window.renderRecommendations();
-    }
-
-    // GỌI loadDetailPlaylist CHỈ KHI CẦN
-    if (tabName === 'detail-playlist' && playlistId && typeof window.loadDetailPlaylist === 'function') {
-        // Ngăn gọi nhiều lần
-        if (window.isLoadingPlaylistDetail) {
-            console.log('Đang tải chi tiết playlist, bỏ qua');
-            return;
-        }
-        window.loadDetailPlaylist(playlistId);
-    }
-};
 
 window.updatePlayerBar = function(track) {
     const cover = document.getElementById('trackCover');
@@ -486,6 +440,14 @@ document.addEventListener('DOMContentLoaded', () => {
     // Giả sử player-bar.html được nhúng vào footer
     window.loadComponent('/components/player-bar.html', 'playerBar'); 
     window.loadComponent('/home-content.html', 'mainContentArea');
+
+    setTimeout(() => {
+        if (typeof window.loadHomePage === 'function') {
+            window.loadHomePage();
+        } else {
+            console.warn('loadHomePage chưa sẵn sàng');
+        }
+    }, 500);
 });
 
 

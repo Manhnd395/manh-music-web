@@ -6,12 +6,11 @@ console.log('📄 Script loaded:', window.location.href);
 document.addEventListener('DOMContentLoaded', function() {
     const currentPath = window.location.pathname;
     console.log('🔍 Auth.js checking path:', currentPath);
-    
     if (currentPath === '/' || currentPath === '/index' || currentPath === '/index.html') {
         supabase.auth.getUser().then(({ data: { user } }) => {
             console.log('👤 User status:', user ? 'Logged in' : 'Not logged in');
             if (user) {
-                console.log('🔄 Redirecting to player (already logged in)');
+                console.log('Redirecting to player (already logged in)');
                 window.location.href = "/player.html";
             } else {
                 const authContainer = document.getElementById("authContainer");
@@ -25,27 +24,8 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     }
 
-    // Parse OAuth callback token từ URL hash
-    const urlHash = window.location.hash.substring(1);
-    if (urlHash) {
-        const params = new URLSearchParams(urlHash);
-        const accessToken = params.get('access_token');
-        const refreshToken = params.get('refresh_token');
-        if (accessToken && refreshToken) {
-            supabase.auth.setSession({
-                access_token: accessToken,
-                refresh_token: refreshToken
-            }).then(({ data: { session }, error }) => {
-                if (error) {
-                    console.error('Set session error:', error);
-                } else {
-                    console.log('Session set from callback:', session.user.email);
-                    window.history.replaceState({}, document.title, window.location.pathname);
-                    window.location.href = '/player.html';
-                }
-            });
-        }
-    }
+    // Note: OAuth callback handling (URL hash -> setSession) is performed in `app.js`.
+    // Removing duplicate handling here avoids races where both modules try to set session.
 
     // FIX: Attach listener cho signup form
     const signupForm = document.getElementById('signupForm');
@@ -356,22 +336,44 @@ async function logout() {
     try {
         console.log('Starting logout...');
 
-        // 1. Sign out từ Supabase
-        const { error: signOutError } = await supabase.auth.signOut();
-        if (signOutError) {
-            console.error('SignOut error:', signOutError);
+        // 1. Sign out từ Supabase — add a timeout so a hung network/request won't block the UI
+        const signOutPromise = (async () => {
+            try {
+                const { error: signOutError } = await supabase.auth.signOut();
+                return { signOutError };
+            } catch (e) {
+                return { signOutError: e };
+            }
+        })();
+
+        const timeoutMs = 5000;
+        const result = await Promise.race([
+            signOutPromise,
+            new Promise(resolve => setTimeout(() => resolve({ timeout: true }), timeoutMs))
+        ]);
+
+        if (result.timeout) {
+            console.warn(`Supabase signOut timed out after ${timeoutMs}ms — proceeding with local cleanup`);
+        } else if (result.signOutError) {
+            console.error('SignOut error:', result.signOutError);
         } else {
             console.log('Supabase signOut success');
         }
 
         // 2. XÓA TOÀN BỘ LOCAL STORAGE CỦA SUPABASE
         // Supabase lưu session ở key động: supabase.auth.token + user_id
-        Object.keys(localStorage).forEach(key => {
-            if (key.startsWith('supabase.auth.')) {
-                localStorage.removeItem(key);
+        // Remove supabase keys safely (iterate backwards to avoid index issues)
+        try {
+            for (let i = localStorage.length - 1; i >= 0; i--) {
+                const key = localStorage.key(i);
+                if (key && key.startsWith('supabase.auth.')) {
+                    localStorage.removeItem(key);
+                }
             }
-        });
-        console.log('All supabase.auth.* keys cleared from localStorage');
+            console.log('All supabase.auth.* keys cleared from localStorage');
+        } catch (e) {
+            console.warn('Error clearing localStorage keys:', e);
+        }
 
         // 3. Clear window cache (như cũ)
         window.cachedPlaylists = null;
@@ -397,9 +399,27 @@ async function logout() {
     }
 }
 
+supabase.auth.onAuthStateChange((event, session) => {
+    console.log('AUTH STATE CHANGED:', event, session?.user?.email || 'no user');
+
+    if (event === 'SIGNED_IN' && session?.user) {
+        // Tự động redirect nếu đang ở index.html
+        if (window.location.pathname.includes('index.html') || window.location.pathname === '/') {
+            window.location.href = '/player.html';
+        }
+    }
+
+    if (event === 'SIGNED_OUT') {
+        window.location.href = '/index.html';
+    }
+});
+
 window.authFunctions = {
     signup,
     loginWithEmail, 
     loginWithGoogle,
     logout
 };
+
+// Also export for module consumers so app.js can import directly and avoid relying on globals
+export { signup, loginWithEmail, loginWithGoogle, logout };

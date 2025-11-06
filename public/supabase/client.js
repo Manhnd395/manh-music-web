@@ -1,27 +1,108 @@
 // public/supabase/client.js
-import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm';
+import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js/+esm';
+import { SUPABASE_URL, SUPABASE_ANON_KEY } from '../scripts/config.mjs';
 
-// Read config from window object (created at build time as /scripts/config.js)
-const SUPABASE_URL = typeof window !== 'undefined' ? window.SUPABASE_URL ?? null : null;
-const SUPABASE_ANON_KEY = typeof window !== 'undefined' ? window.SUPABASE_ANON_KEY ?? null : null;
+console.log('📦 client.js loaded - initializing Supabase client');
 
-let supabase = null;
-if (SUPABASE_URL && SUPABASE_ANON_KEY) {
-    try {
-        supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
-        console.log('Supabase initialized (client.js)');
-    } catch (err) {
-        console.error('Failed to initialize Supabase client:', err);
-        supabase = null;
-    }
+const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+window.supabase = supabase;
+
+if (window.appFunctions?.getCurrentUserId) {
+    window.appFunctions.getCurrentUserId().then(id => {
+        console.log('CURRENT USER ID:', id);
+    });
 } else {
-    // Do not throw here — keep page usable and allow graceful degradation
-    console.warn('Supabase config not found. Ensure /scripts/config.js is created and loaded before modules.');
+    console.log('appFunctions.getCurrentUserId not ready');
 }
 
-// Make available for non-module scripts
-try { window.supabase = supabase; } catch (e) { /* ignore if window not writable */ }
+if (window.supabase) {
+    console.log('có supabase')
+    window.supabase.auth.getUser().then(r => {
+        if (r.error) {
+            console.error('❌ getUser error:', r.error.message);
+        } else if (!r.data?.user) {
+            console.warn('⚠️ getUser returned null user');
+        } else {
+            console.log('✅ GET USER:', r.data.user.id);
+        }
+    });
+}
 
-// Export both named and default exports
+// ✅ Khôi phục session nếu có
+supabase.auth.getSession().then(({ data: session }) => {
+    if (session?.user) {
+        console.log('✅ Session restored:', session.user.id);
+        if (typeof window.loadHomePage === 'function') {
+            window.loadHomePage();
+        } else {
+            console.warn('⚠️ Hàm loadHomePage chưa sẵn sàng');
+        }
+    } else {
+        console.warn('❌ Không tìm thấy phiên đăng nhập');
+    }
+});
+
+supabase.auth.onAuthStateChange(async (event, session) => {
+  console.log('⚙️ Auth state changed:', event);
+  if (event === 'SIGNED_IN' && session?.user) {
+    window.currentUser = session.user;
+    console.log('✅ User signed in:', session.user.email);
+    resetAllCaches?.();
+    await initializeApp(session.user);
+  }
+  if (event === 'SIGNED_OUT') {
+    window.currentUser = null;
+    resetAllCaches?.();
+    window.location.href = '/index.html';
+  }
+});
+
+
+async function testRLSPolicies() {
+    console.log('%c🧪 BẮT ĐẦU TEST RLS POLICIES', 'color: #ff6b6b; font-size: 16px; font-weight: bold');
+    
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) {
+        console.log('%c❌ KHÔNG CÓ USER ĐỂ TEST', 'color: red; font-size: 14px');
+        return;
+    }
+    console.log('%c✅ USER:', user.id, 'color: cyan');
+
+    // TEST 1: playlists (QUAN TRỌNG NHẤT)
+    const { data: pl, error: ple } = await supabase
+        .from('playlists')
+        .select('id, name')
+        .eq('user_id', user.id)
+        .limit(1);
+    console.log('%c📋 playlists SELECT:', 
+        ple ? `%c❌ ${ple.message}` : `%c✅ OK (${pl?.length} rows)`,
+        ple ? 'color: red' : 'color: lime'
+    );
+
+    // TEST 2: tracks
+    const { data: tr, error: tre } = await supabase
+        .from('tracks')
+        .select('id')
+        .limit(1);
+    console.log('%c🎵 tracks SELECT:', 
+        tre ? `%c❌ ${tre.message}` : '%c✅ OK',
+        tre ? 'color: red' : 'color: lime'
+    );
+
+    // TEST 3: users (profile)
+    const { data: us, error: use } = await supabase
+        .from('users')
+        .select('id')
+        .eq('id', user.id)
+        .single();
+    console.log('%c👤 users SELECT (own):', 
+        use ? `%c❌ ${use.message}` : '%c✅ OK',
+        use ? 'color: red' : 'color: lime'
+    );
+
+    console.log('%c🏁 TEST RLS HOÀN TẤT', 'color: #ffd93d; font-size: 14px; font-weight: bold');
+}
+
 export { supabase };
 export default supabase;

@@ -1,6 +1,7 @@
 // app.js
 import { supabase } from '../supabase/client.js';
 import { renderPlaylists, createPlaylist } from './playlist.js';
+import { logout as authLogout } from './auth.js';
 
 console.log('App.js loaded');
 console.log('Supabase instance:', supabase ? 'Connected' : 'Not connected');
@@ -25,7 +26,6 @@ let cachedPlaylistTracks = null;
 let cachedMyUploads = null;
 let recommendationsLoaded = false;
 
-let appInitialized = false;
 let initializationInProgress = false;
 let homePageLoaded = false;
 
@@ -33,6 +33,7 @@ let isTransitioning = false;
 const FALLBACK_COVER = '/assets/default-cover.webp';
 let recentlyPaused = false;
 window.isPlaying = isPlaying;
+window.currentUser = null;
 
 window.appFunctions = window.appFunctions || {};
 
@@ -597,8 +598,8 @@ window.playNextTrack = async function () {
     // FIX: Nếu currentPlaylist empty, load recs random
     if (currentPlaylist.length === 0) {
         console.log('No current playlist - loading recommendations for random next');
-        const user = (await supabase.auth.getUser()).data.user;
-        if (!user) return;
+        const user = window.currentUser;
+    if (!user) return;
 
         if (!cachedRecommendedTracks || cachedRecommendedTracks.length === 0) {
             try {
@@ -704,7 +705,7 @@ function escapeHtml(text) {
 }
 
 async function updatePlayHistory(trackId) {
-    const { data: { user } } = await supabase.auth.getUser();
+    const user = window.currentUser;
     if (!user || !trackId) return;
 
     const userId = user.id;
@@ -763,55 +764,55 @@ window.renderPlayHistory = async function() {
 };
 
 async function loadUserPlaylists(forceRefresh = false) {
-    if (!window.playlistsLoadFlag) window.playlistsLoadFlag = false;
-    if (window.playlistsLoadFlag && !forceRefresh) return;
+    console.log('1. loadUserPlaylists STARTED', { forceRefresh });
+
+    if (!forceRefresh && window.playlistsLoadFlag) {
+        console.log('2. SKIP: already loaded');
+        return;
+    }
     window.playlistsLoadFlag = true;
-  
-    const { data: { user }, error: authError } = await supabase.auth.getUser();
-    if (authError || !user) {
-        console.error('No user session for playlists:', authError);
+
+    const user = window.currentUser;
+    console.log('3. Using window.currentUser:', user ? user.id : 'NULL');
+
+    if (!user) {
+        console.error('5. NO USER → STOPPING loadUserPlaylists');
         window.playlistsLoadFlag = false;
         return;
     }
-    
+
     const playlistGrid = document.getElementById('playlistGrid');
     if (!playlistGrid) {
+        console.error('7. playlistGrid NOT FOUND');
         window.playlistsLoadFlag = false;
         return;
     }
- 
-    if (cachedPlaylists && !forceRefresh) {
-        // SỬA: Dùng renderPlaylists thay vì displayPlaylists
-        renderPlaylists(cachedPlaylists, playlistGrid);
-        window.playlistsLoadFlag = false;
-        return;
-    }
-    
+
     try {
-        console.log('🔄 Loading playlists for user:', user.id);
-        
+        console.log('8. QUERYING playlists table...');
         const { data: playlists, error } = await supabaseQueryWithRetry(() =>
             supabase
                 .from('playlists')
                 .select('id, name, icon, color, cover_url')
                 .eq('user_id', user.id)
+                .order('created_at', { ascending: false })
         );
-        
+
         if (error) throw error;
-        
+
         cachedPlaylists = playlists || [];
-        console.log(`✅ Loaded ${playlists.length} playlists`);
-        
-        // SỬA: Dùng renderPlaylists
         renderPlaylists(playlists, playlistGrid);
-        
+        console.log('11. renderPlaylists DONE');
     } catch (error) {
-        console.error('❌ Lỗi tải Playlist sau tất cả retry:', error);
-        playlistGrid.innerHTML = '<p class="error-message">Lỗi tải playlist. Vui lòng thử lại.</p>';
+        console.error('12. FINAL ERROR:', error);
+        playlistGrid.innerHTML = '<p class="error-message">Lỗi tải playlist.</p>';
     } finally {
         window.playlistsLoadFlag = false;
+        console.log('13. loadUserPlaylists FINISHED');
     }
 }
+
+
 window.appFunctions.loadUserPlaylists = window.loadUserPlaylists;
 
 window.loadTopTracks = async function(limit = 10) {
@@ -885,7 +886,7 @@ window.renderRecommendations = async function() {
 
 async function loadFreshPlaylists() {
     try {
-        const { data: { user } } = await supabase.auth.getUser();
+        const user = window.currentUser;
         if (!user) return;
 
         const { data: playlists, error } = await supabaseQueryWithRetry(() =>
@@ -937,8 +938,8 @@ async function handleCreatePlaylistSubmit(event) {
         return;
     }
    
-    const { data, error: userError } = await supabase.auth.getUser();
-    if (userError || !data.user) {
+    const user = window.currentUser;
+    if (!user) {
         console.error('Lỗi: Người dùng chưa đăng nhập hoặc lỗi xác thực:', userError);
         alert('Vui lòng đăng nhập để tạo danh sách phát!');
         return;
@@ -1073,34 +1074,48 @@ window.appFunctions.deleteTrack = window.deleteTrack;
 // ==================== RETRY LOGIC ====================
 async function supabaseQueryWithRetry(queryFn, maxRetries = 3, baseDelay = 1000) {
     let lastError;
-    
+
     for (let attempt = 1; attempt <= maxRetries; attempt++) {
         try {
-            console.log(`🔄 Attempt ${attempt}/${maxRetries}`);
+            console.log(`Attempt ${attempt}/${maxRetries}`);
             const result = await queryFn();
-            
-            if (result.error && result.error.code !== 'PGRST116') { // PGRST116 = no rows
-                throw result.error;
+
+            // FIX: Kiểm tra cả data và error
+            if (result.error) {
+                // Log full error object for debugging
+                console.error('Query returned error object:', result.error);
+                // Chỉ ném nếu không phải "không tìm thấy"
+                if (result.error.code !== 'PGRST116') {
+                    throw result.error;
+                } else {
+                    // PGRST116 = không có bản ghi → trả về data: null
+                    console.log('No rows found (PGRST116) - returning empty');
+                    return { data: null, error: null };
+                }
             }
-            
-            console.log(`✅ Query succeeded on attempt ${attempt}`);
+
+            // Thành công
+            console.log(`Query succeeded on attempt ${attempt}`);
             return result;
+
         } catch (error) {
             lastError = error;
-            console.warn(`Attempt ${attempt} failed:`, error.message);
-            
+            // Log full error for better diagnosis (not just message)
+            console.warn(`Attempt ${attempt} failed:`, error);
+            if (error?.response) console.warn('Response object:', error.response);
+
             if (attempt < maxRetries) {
                 const delay = baseDelay * Math.pow(2, attempt - 1);
-                console.log(`⏳ Retrying in ${delay}ms...`);
+                console.log(`Retrying in ${delay}ms...`);
                 await new Promise(resolve => setTimeout(resolve, delay));
             }
         }
     }
-    
-    console.error('❌ All retry attempts failed:', lastError);
+
+    console.error('All retry attempts failed:', lastError);
     throw lastError;
 }
-// ==================== CONNECTION TESTING ====================
+
 async function testSupabaseConnection() {
     console.log('🧪 Testing Supabase connection...');
     
@@ -1108,7 +1123,7 @@ async function testSupabaseConnection() {
         { 
             name: 'Authentication', 
             test: async () => {
-                const result = await supabase.auth.getUser();
+                const result = window.currentUser;
                 if (result.error) throw result.error;
                 return result;
             }
@@ -1136,7 +1151,9 @@ async function testSupabaseConnection() {
     for (const test of tests) {
         try {
             const start = performance.now();
-            await test.test();
+            const res = await test.test();
+            // Log raw result object for debugging
+            console.log(`${test.name} raw result:`, res);
             const end = performance.now();
             const time = (end - start).toFixed(0);
             results.push({ name: test.name, status: '✅', time: `${time}ms` });
@@ -1201,7 +1218,7 @@ window.appFunctions = {
 };
 
 window.loadPlaylistTracks = async function(playlistId, shouldPlay = false) {
-    const { data: { user } } = await supabase.auth.getUser();
+    const user = window.currentUser;
     if (!user) {
         console.error('User không đăng nhập, không tải tracks.');
         return [];
@@ -1279,7 +1296,7 @@ window.loadPlaylistTracks = async function(playlistId, shouldPlay = false) {
 window.appFunctions.loadPlaylistTracks = window.loadPlaylistTracks;
 
 async function testRLSPolicies() {
-    const { data: { user } } = await supabase.auth.getUser();
+    const user = window.currentUser;
     console.log('🧪 Testing RLS Policies for user:', user?.id);
     
     // Test SELECT từ tracks
@@ -1302,7 +1319,7 @@ async function testRLSPolicies() {
 testRLSPolicies();
 
 async function getCurrentUserId() {
-    const { data: { user } } = await supabase.auth.getUser();
+    const user = window.currentUser;
     return user?.id;
 }
 
@@ -1318,7 +1335,7 @@ window.displayTracks = function(tracks, container) {
       
         // Click để play track (với stop nếu click action)
         trackElement.addEventListener('click', function(e) {
-            if (e.target.closest('.btn-action')) return; // Stop nếu click action
+            if (e.target.closest('.btn-action')) return;
             if (trackElement.trackData && window.appFunctions.playTrack) {
                 window.currentPlaylist = tracks;
                 window.currentTrackIndex = index;
@@ -1453,12 +1470,7 @@ window.searchTracks = searchTracks;
 window.appFunctions.searchTracks = searchTracks;
 
 async function initProfileModal() {
-    const { data: { user }, error: authError } = await supabase.auth.getUser();
-    if (authError) {
-        console.error('Auth error:', authError);
-        alert('Lỗi auth: ' + authError.message);
-        return;
-    }
+    const user = window.currentUser;
     if (!user) {
         console.log('No user logged in');
         return;
@@ -1562,7 +1574,7 @@ async function handleProfileSubmit(event) {
     console.log('Form submit triggered');
 
     const saveBtn = document.getElementById('saveProfileBtn');
-    const { data: { user } } = await supabase.auth.getUser();
+    const user = window.currentUser;
     if (!user) return;
 
     const newUsername = document.getElementById('editUsername').value.trim();
@@ -1712,14 +1724,14 @@ async function loadAndOpenProfileModal() {
         console.warn("Hàm initProfileModal chưa được định nghĩa.");
     }
     
-    const { data: { user } } = await supabase.auth.getUser();
+    const user = window.currentUser;
     if (!user) {
          container.innerHTML = '<p style="padding: 20px;">Vui lòng đăng nhập lại để xem thông tin cá nhân.</p>';
     }
 }
 
 async function loadHistoryTracks(forceRefresh = false) {
-    const user = (await supabase.auth.getUser()).data.user;
+    const user = window.currentUser;
     const historyTrackList = document.getElementById('historyTrackList');
     if (!user || !historyTrackList) return;
 
@@ -1894,9 +1906,9 @@ window.loadMyUploads = async function(forceRefresh = false) {
     
     container.innerHTML = '<p>Đang tải danh sách bài hát...</p>';
    
-    const { data: { user }, error: authError } = await supabase.auth.getUser();
-    if (authError || !user) {
-        console.error('No user session for uploads:', authError);
+    const user = window.currentUser;
+    if (!user) {
+        console.error('No user session for uploads');
         container.innerHTML = '<p class="error-message">Vui lòng đăng nhập.</p>';
         return;
     }
@@ -1963,8 +1975,9 @@ window.loadHomePage = async function() {
         
         // 3.1. Load playlists trước
         console.log('📋 Step 1: Loading playlists...');
-        await window.appFunctions.loadUserPlaylists();
-        console.log('✅ Playlists loaded');
+        if (window.appFunctions?.loadUserPlaylists) {
+            await window.appFunctions.loadUserPlaylists();
+        }
         
         // 3.2. Load recent history  
         console.log('📋 Step 2: Loading history...');
@@ -2062,25 +2075,22 @@ async function loadRecommendations() {
 }
 
 window.handleLogout = async function() {
-    try {
-        cachedPlaylists = null;
-        cachedHistoryTracks = null;
-        cachedRecommendedTracks = null;
-        cachedProfile = null;
-        
-        const { error } = await supabase.auth.signOut();
-        if (error) throw error;
-        window.location.href = '/index.html'; 
-    } catch (error) {
-        console.error('Lỗi khi đăng xuất:', error);
-        alert('Đăng xuất thất bại.');
-    }
+  try {
+    await supabase.auth.signOut();
+    window.currentUser = null;
+    resetAllCaches();
+    window.location.href = '/index.html';
+  } catch (error) {
+    console.error('Lỗi khi đăng xuất:', error);
+    alert('Đăng xuất thất bại.');
+  }
 };
+window.appFunctions.handleLogout = window.handleLogout;
 
 // LẤY BÀI HÁT GẦN ĐÂY NHẤT
 async function getRecentTrack() {
     try {
-        const { data: { user } } = await supabase.auth.getUser();
+        const user = window.currentUser;
         if (!user) return null;
 
         const { data, error } = await supabase
@@ -2110,38 +2120,38 @@ async function getRecentTrack() {
     }
 }
 
+
 async function resumeRecentTrack() {
-    async function resumeRecentTrack() {
-        const recent = await getRecentTrack();
-        if (!recent?.track) {
-            console.log('Không có bài hát gần đây để resume');
+    const recent = await getRecentTrack();
+    if (!recent?.track) {
+        console.log('Không có bài hát gần đây để resume');
+        return;
+    }
+
+    // Chờ player bar sẵn sàng
+    let attempts = 0;
+    const maxAttempts = 15;
+
+    const tryPlay = async () => {
+        if (window.updatePlayerBar && document.getElementById('playerBar')) {
+            const playlist = await window.getRecommendationsAsPlaylist?.() || [];
+            const index = playlist.findIndex(t => t.id === recent.track.id);
+            window.playTrack(recent.track, playlist, index >= 0 ? index : 0);
+            console.log(`Đã resume: "${recent.track.title}"`);
             return;
         }
 
-        // Chờ player bar sẵn sàng
-        let attempts = 0;
-        const maxAttempts = 15;
+        if (attempts < maxAttempts) {
+            attempts++;
+            setTimeout(tryPlay, 300);
+        } else {
+            console.warn('Player bar không sẵn sàng sau 4.5s');
+        }
+    };
 
-        const tryPlay = async () => {
-            if (window.updatePlayerBar && document.getElementById('playerBar')) {
-                const playlist = await window.getRecommendationsAsPlaylist?.() || [];
-                const index = playlist.findIndex(t => t.id === recent.track.id);
-                window.playTrack(recent.track, playlist, index >= 0 ? index : 0);
-                console.log(`Đã resume: "${recent.track.title}"`);
-                return;
-            }
-
-            if (attempts < maxAttempts) {
-                attempts++;
-                setTimeout(tryPlay, 300);
-            } else {
-                console.warn('Player bar không sẵn sàng sau 4.5s');
-            }
-        };
-
-        tryPlay();
-    }
+    tryPlay();
 }
+
 
 window.togglePlaylistDropdown = async function(button, trackId) {
     console.log('Toggle dropdown cho track:', trackId);
@@ -2199,7 +2209,7 @@ window.togglePlaylistDropdown = async function(button, trackId) {
         // CLEAR & LOAD
         dropdown.innerHTML = '';
         try {
-            const { data: { user } } = await supabase.auth.getUser();
+            const user = window.currentUser;
             if (!user) {
                 dropdown.innerHTML = '<div class="empty-message">Đăng nhập để thêm playlist</div>';
             } else {
@@ -2328,7 +2338,7 @@ async function loadRecentHistory() {
     if (!container) return;
 
     try {
-        const { data: { user } } = await supabase.auth.getUser();
+        const user = window.currentUser;
         if (!user) return;
 
         const { data: history, error } = await supabase
@@ -2399,53 +2409,84 @@ window.testAllTrackUrls = async function() {
     }
 };
 
+window.switchTab = function(tabName, param = null) {
+    console.log('switchTab called:', tabName, param);
+    
+    // Ẩn tất cả section
+    document.querySelectorAll('.page-section').forEach(sec => {
+        sec.style.display = 'none';
+    });
+
+    // Hiện section tương ứng
+    let targetId;
+    if (tabName === 'home') targetId = 'home-section';
+    else if (tabName === 'detail-playlist') targetId = 'playlistDetail';
+    else if (tabName === 'search') targetId = 'search-section';
+    else if (tabName === 'uploads') targetId = 'myUploadsSection';
+    else if (tabName === 'profile') targetId = 'profile-section';
+
+    const target = document.getElementById(targetId);
+    if (target) {
+        target.style.display = 'block';
+        console.log(`Switched to: ${targetId}`);
+    } else {
+        console.warn(`Section not found: ${targetId}`);
+    }
+
+    // Xử lý param (nếu có)
+    if (tabName === 'detail-playlist' && param) {
+        setTimeout(() => {
+            if (window.loadDetailPlaylist) {
+                window.loadDetailPlaylist(param);
+            }
+        }, 100);
+    }
+
+    // Cập nhật active tab
+    document.querySelectorAll('.sidebar-link').forEach(link => {
+        link.classList.remove('active');
+        if (link.dataset.tab === tabName) {
+            link.classList.add('active');
+        }
+    });
+};
+
 async function initializeApp(user) {
-    if (appInitialized || initializationInProgress) {
-        console.log('🔄 App already initialized or in progress, skipping');
-        return;
+  if (window.appInitialized || window.initializationInProgress) {
+    console.log('⏳ App already initialized or in progress, skipping');
+    return;
+  }
+
+  if (!user) {
+    console.error('❌ initializeApp called without user');
+    return;
+  }
+
+  window.initializationInProgress = true;
+  window.currentUser = user;
+
+  console.log('🚀 Initializing app for user:', user.email || user.id);
+
+  try {
+    await updateProfileDisplay(user);
+    await window.loadHomePage();
+    await window.switchTab('home');
+    await loadUserPlaylists(true);
+    await loadRecentHistory();
+    if (!window.userSessionLoaded) {
+      window.userSessionLoaded = true;
+      await resumeRecentTrack(user);
     }
-    
-    initializationInProgress = true;
-    console.log('🚀 Starting app initialization for user:', user.id);
-    
-    try {
-        // 1. Test connection trước
-        console.log('🧪 Testing connection...');
-        const connectionOk = await testSupabaseConnection();
-        
-        if (!connectionOk) {
-            console.warn('⚠️ Connection issues detected');
-            showConnectionWarning();
-        }
-        
-        // 2. Cập nhật profile UI đầu tiên
-        await updateProfileDisplay(user);
-        
-        // 3. Load homepage và components - CHỈ GỌI 1 LẦN
-        await window.loadHomePage();
-        await window.switchTab('home');
-        
-        // 4. Load data với retry - CHỈ GỌI 1 LẦN
-        await loadUserPlaylists(true);
-        await loadRecentHistory();
-        
-        // 5. Resume recent track (nếu cần)
-        if (!window.userSessionLoaded) {
-            window.userSessionLoaded = true;
-            await resumeRecentTrack(user);
-        }
-        
-        appInitialized = true;
-        console.log('✅ App fully initialized');
-        
-    } catch (error) {
-        console.error('❌ App initialization failed:', error);
-        showConnectionWarning();
-        initializationInProgress = false; // Reset để retry
-    } finally {
-        initializationInProgress = false;
-    }
+    window.appInitialized = true;
+    console.log('✅ App fully initialized');
+  } catch (error) {
+    console.error('❌ App initialization failed:', error);
+    showConnectionWarning?.();
+  } finally {
+    window.initializationInProgress = false;
+  }
 }
+
 
 function resetAllCaches() {
     console.log('🔄 Resetting all caches for fresh start');
@@ -2461,113 +2502,127 @@ function resetAllCaches() {
 
 document.addEventListener('DOMContentLoaded', async () => {
     console.log('📦 DOM Content Loaded');
-    
-    if (appInitialized) {
+    const { data: { session } } = await supabase.auth.getSession();
+    if (session?.user) {
+        window.currentUser = session.user;
+        await initializeApp(session.user);
+    } else {
+        console.warn('⚠️ No active session found — redirecting to login');
+        window.location.href = '/index.html';
+    }
+
+    if (window.appInitialized) {
         console.log('🔄 App already initialized, skipping DOMContentLoaded');
         return;
     }
-    
-    // 1. Xử lý OAuth callback từ URL hash
+
+    // Nếu có user sớm từ OAuth (set ở app.js)
+    if (window._oauthEarlyUser) {
+        console.log('🔁 Found early OAuth user on DOMContentLoaded:', window._oauthEarlyUser.id);
+        try {
+            await initializeApp(window._oauthEarlyUser);
+            window._oauthEarlyUser = null;
+            window.appInitialized = true;
+            return;
+        } catch (e) {
+            console.error('❌ Error initializing app with early OAuth user:', e);
+            window.appInitialized = false;
+        }
+    }
+
+    // Kiểm tra hash OAuth callback
     const urlHash = window.location.hash.substring(1);
     if (urlHash) {
         const params = new URLSearchParams(urlHash);
         const accessToken = params.get('access_token');
         const refreshToken = params.get('refresh_token');
-        
+
         if (accessToken && refreshToken) {
             try {
+                console.log('🔑 Found OAuth tokens in URL — setting Supabase session...');
                 const { data: { session }, error } = await supabase.auth.setSession({
                     access_token: accessToken,
                     refresh_token: refreshToken
                 });
-                
+
                 if (error) {
-                    console.error('Set session error:', error);
-                    window.location.href = "/index.html";
+                    console.error('❌ Set session error:', error);
+                    window.location.href = '/index.html';
                     return;
                 }
-                
-                console.log('Session set from callback:', session.user.email);
-                window.history.replaceState({}, document.title, window.location.pathname);
-                
-                // KHỞI TẠO APP SAU KHI SET SESSION
+
+                if (!session?.user) {
+                    console.warn('⚠️ setSession returned session without user');
+                    window.location.href = '/index.html';
+                    return;
+                }
+
+                console.log('✅ Session established from OAuth for:', session.user.email);
+                history.replaceState({}, document.title, window.location.pathname); // Xóa hash
+
                 await initializeApp(session.user);
+                window.appInitialized = true;
                 return;
-                
-            } catch (error) {
-                console.error('OAuth processing error:', error);
-                window.location.href = "/index.html";
+
+            } catch (err) {
+                console.error('❌ OAuth processing error:', err);
+                window.location.href = '/index.html';
                 return;
             }
         }
     }
-    
-    // 2. Kiểm tra user đã đăng nhập chưa
+
+    // Fallback: kiểm tra session từ localStorage
     try {
-        const { data: { user }, error } = await supabase.auth.getUser();
-        
-        if (error || !user) {
-            console.log('❌ No authenticated user, redirecting to login');
-            window.location.href = "/index.html";
+        const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+        if (sessionError) console.error('❌ Session retrieval error:', sessionError);
+
+        if (session?.user) {
+            console.log('✅ Existing session found:', session.user.email);
+            await initializeApp(session.user);
+            window.appInitialized = true;
+            return;
+        } else {
+            console.warn('⚠️ No active session found — redirecting to login');
+            window.location.href = '/index.html';
             return;
         }
-        
-        console.log('✅ User authenticated:', user.id);
-        
-        // 3. KHỞI TẠO APP VỚI USER - CHỈ GỌI 1 LẦN
-        await initializeApp(user);
-        
-    } catch (error) {
-        console.error('Auth check error:', error);
-        window.location.href = "/index.html";
+    } catch (err) {
+        console.error('❌ Error checking existing session:', err);
+        window.location.href = '/index.html';
+        return;
     }
-    
-    // 4. Giữ nguyên auth state change listener (nhưng đơn giản hóa)
-    supabase.auth.onAuthStateChange(async (event, session) => {
-        console.log('Auth state changed:', event);
-        const user = session?.user;
-       
-        if (event === 'SIGNED_IN' && user) {
-            // Reset flags để init lại
-            appInitialized = false;
-            homePageLoaded = false;
-            resetAllCaches();
-            console.log('🔄 Signed in - reinitializing app');
-            
-            // Init lại app
-            await initializeApp(user);
-            
-        } else if (event === 'SIGNED_OUT') {
-            console.log('🔄 App.js: Handling SIGNED_OUT');
-            appInitialized = false;
-            homePageLoaded = false;
-            updateProfileDisplay(null);
-            window.userSessionLoaded = false;
-            resetAllCaches();
-            
-            // Clear audio state
-            if (currentAudio) {
-                currentAudio.pause();
-                currentAudio = null;
-            }
-            isPlaying = false;
-            
-            console.log('✅ App fully reset for sign out');
-            
-            // Redirect nếu không ở trang login
-            if (!window.location.pathname.includes('index.html')) {
-                window.location.href = "/index.html";
-            }
-        }
-    });
 });
 
-window.handleLogout = async function() {
-    await window.authFunctions.logout();  
-};
-window.appFunctions.handleLogout = window.handleLogout;
+// Đăng ký listener cho mọi sự kiện auth (nên đặt ngay sau khi Supabase khởi tạo)
+supabase.auth.onAuthStateChange(async (event, session) => {
+    console.log('⚙️ Auth state changed:', event, session?.user?.email || 'no user');
 
+    if (event === 'SIGNED_IN' && session?.user) {
+        console.log('✅ User signed in:', session.user.email);
+        window.appInitialized = false;
+        resetAllCaches?.();
+        await initializeApp(session.user);
+        window.appInitialized = true;
+    }
 
+    if (event === 'SIGNED_OUT') {
+        console.log('🚪 User signed out — resetting app');
+        window.appInitialized = false;
+        updateProfileDisplay?.(null);
+        resetAllCaches?.();
+
+        if (window.currentAudio) {
+            window.currentAudio.pause();
+            window.currentAudio = null;
+        }
+        window.isPlaying = false;
+
+        if (!window.location.pathname.includes('index.html')) {
+            window.location.href = '/index.html';
+        }
+    }
+});
 
 function navigateTo(target) {
     if (target === 'home') {

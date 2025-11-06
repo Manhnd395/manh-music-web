@@ -16,8 +16,7 @@
           crossorigin="anonymous" referrerpolicy="no-referrer" />
     <link rel="icon" href="/assets/favicon.ico" type="image/x-icon">
 
-    <script src="/scripts/config.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <!-- Scripts -->
     <script type="module" src="/supabase/client.js"></script>
     <script type="module" src="/scripts/app.js"></script>
     <script type="module" src="/scripts/playlist.js"></script>
@@ -69,9 +68,8 @@
 
     <footer id="playerBar" class="player-bar"></footer> 
 
-    <!-- SỬA trong player.html - thêm cache busting -->
+    <!-- Cache busting cho development -->
     <script type="module">
-        // Clear module cache trên development
         if (window.location.hostname === 'localhost') {
             const cacheBuster = '?v=' + Date.now();
             document.querySelectorAll('script[type="module"]').forEach(script => {
