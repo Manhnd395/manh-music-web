@@ -1,13 +1,10 @@
+# Static site: Không build, publish toàn bộ repo
 [build]
-  publish = "dist"  # Hoặc "." nếu không build
-  command = "echo 'No build command'"  # Nếu không dùng build tool
+  publish = "."  # Publish thư mục gốc (tất cả files HTML/CSS/JS)
+  command = ""   # Không chạy build command
 
-# Inject env vars vào HTML (cho client-side)
+# Headers (tùy chọn, giữ nếu cần bảo mật)
 [[headers]]
   for = "/*"
   [headers.values]
     X-Frame-Options = "DENY"
-
-# Build hook để inject (nếu cần)
-[build.environment]
-  NODE_VERSION = "18"
