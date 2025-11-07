@@ -145,8 +145,8 @@ window.switchTab = function (tabName, playlistId = null) {
         }
     } else if (tabName === 'uploads' && window.loadMyUploads) {
         window.loadMyUploads(true);
-    } else if (tabName === 'recommend' && window.loadRecommendations) {
-        window.loadRecommendations();
+    } else if (tabName === 'recommend' && window.renderRecommendations) {
+        window.renderRecommendations();
     } 
     
     // Cập nhật trạng thái Active trên Sidebar

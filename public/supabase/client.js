@@ -1,108 +1,116 @@
 // public/supabase/client.js
-import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js/+esm';
-import { SUPABASE_URL, SUPABASE_ANON_KEY } from '../scripts/config.mjs';
+import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm';
 
 console.log('📦 client.js loaded - initializing Supabase client');
 
-const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+const supabaseUrl = window.SUPABASE_URL;
+const supabaseAnonKey = window.SUPABASE_ANON_KEY;
+
+if (!supabaseUrl || !supabaseAnonKey) {
+  console.error('❌ Supabase config missing! Check /scripts/config.mjs');
+  throw new Error('Supabase config missing');
+}
+
+// Thêm debug config nếu localhost (như web B)
+if (window.location.hostname === 'localhost') {
+    console.log('DEBUG: SUPABASE_URL:', supabaseUrl);
+    console.log('DEBUG: ANON_KEY length:', supabaseAnonKey?.length || 0);
+}
+
+const supabase = createClient(supabaseUrl, supabaseAnonKey, {
+  auth: { persistSession: true },
+});
 
 window.supabase = supabase;
 
-if (window.appFunctions?.getCurrentUserId) {
-    window.appFunctions.getCurrentUserId().then(id => {
-        console.log('CURRENT USER ID:', id);
-    });
-} else {
-    console.log('appFunctions.getCurrentUserId not ready');
-}
+// ✅ Kiểm tra session (bước lấy dữ liệu)
+(async function restoreSessionAndNotify() {
+    const logoutFlag = localStorage.getItem('manh-music-logout');
+    if (logoutFlag === 'true') {
+        console.log('Detected recent logout — clearing auth & skipping restore');
+        localStorage.removeItem('manh-music-logout');
+        localStorage.removeItem('manh-music-logout-time');
 
-if (window.supabase) {
-    console.log('có supabase')
-    window.supabase.auth.getUser().then(r => {
-        if (r.error) {
-            console.error('❌ getUser error:', r.error.message);
-        } else if (!r.data?.user) {
-            console.warn('⚠️ getUser returned null user');
-        } else {
-            console.log('✅ GET USER:', r.data.user.id);
-        }
-    });
-}
+        // Xóa mọi key auth
+        Object.keys(localStorage).forEach(key => {
+            if (key.includes('sb-') || key.includes('supabase.auth') || key.includes('token')) {
+                localStorage.removeItem(key);
+            }
+        });
 
-// ✅ Khôi phục session nếu có
-supabase.auth.getSession().then(({ data: session }) => {
-    if (session?.user) {
-        console.log('✅ Session restored:', session.user.id);
-        if (typeof window.loadHomePage === 'function') {
-            window.loadHomePage();
-        } else {
-            console.warn('⚠️ Hàm loadHomePage chưa sẵn sàng');
-        }
-    } else {
-        console.warn('❌ Không tìm thấy phiên đăng nhập');
-    }
-});
-
-supabase.auth.onAuthStateChange(async (event, session) => {
-  console.log('⚙️ Auth state changed:', event);
-  if (event === 'SIGNED_IN' && session?.user) {
-    window.currentUser = session.user;
-    console.log('✅ User signed in:', session.user.email);
-    resetAllCaches?.();
-    await initializeApp(session.user);
-  }
-  if (event === 'SIGNED_OUT') {
-    window.currentUser = null;
-    resetAllCaches?.();
-    window.location.href = '/index.html';
-  }
-});
-
-
-async function testRLSPolicies() {
-    console.log('%c🧪 BẮT ĐẦU TEST RLS POLICIES', 'color: #ff6b6b; font-size: 16px; font-weight: bold');
-    
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) {
-        console.log('%c❌ KHÔNG CÓ USER ĐỂ TEST', 'color: red; font-size: 14px');
+        window.dispatchEvent(new CustomEvent('SUPABASE_SESSION_RESTORED', { detail: { session: null } }));
         return;
     }
-    console.log('%c✅ USER:', user.id, 'color: cyan');
+    try {
+        const { data: { session }, error } = await supabase.auth.getSession();
+        console.log('client.js getSession result:', session?.user?.email ?? null, error ?? null);
+        
+        if (session?.user) {
+            window.currentUser = session.user;
+            console.log('✅ Client session restored & dispatched:', session.user.email);
+            
+            // Force refresh session nếu cần (cho token expire hoặc stale)
+            const now = Math.floor(Date.now() / 1000);
+            if (session.expires_at < now + 300) {  // Nếu expire trong 5 phút
+                console.log('🔄 Token near expiry - refreshing session');
+                const { data: { session: refreshed }, error: refreshErr } = await supabase.auth.refreshSession({ refresh_token: session.refresh_token });
+                if (refreshErr) {
+                    console.error('❌ Refresh failed:', refreshErr);
+                    // Clear nếu fail
+                    localStorage.removeItem('sb-lezswjtnlsmznkgrzgmu-auth-token');
+                } else if (refreshed?.user) {
+                    window.currentUser = refreshed.user;
+                    console.log('🔄 Client session refreshed:', refreshed.user.email);
+                    session = refreshed;  // Update cho dispatch
+                }
+            }
+            
+            // Quick RLS test: Check nếu user có thể query self (verify auth/RLS)
+            supabase.from('users').select('id').eq('id', session.user.id).single().then(({ data, error }) => {
+                if (error) {
+                    console.warn('⚠️ Quick RLS test failed in client.js:', error.message);
+                } else {
+                    console.log('✅ Client RLS quick test OK');
+                }
+            }).catch(quickErr => console.warn('Quick test failed:', quickErr));
+            
+            window.dispatchEvent(new CustomEvent('SUPABASE_SESSION_RESTORED', { detail: { session } }));
+        } else {
+            console.warn('❌ No session in client.js - clearing storage if corrupt');
+            const authKey = localStorage.getItem('sb-lezswjtnlsmznkgrzgmu-auth-token');
+            if (authKey) {  // Nếu có nhưng parse fail
+                try {
+                    JSON.parse(authKey);  // Test parse
+                } catch {
+                    localStorage.removeItem('sb-lezswjtnlsmznkgrzgmu-auth-token');
+                    console.log('🔄 Cleared corrupt auth token');
+                }
+            }
+            window.dispatchEvent(new CustomEvent('SUPABASE_SESSION_RESTORED', { detail: { session: null, error } }));
+        }
+    } catch (err) {
+        console.warn('Error getting session:', err);
+        window.dispatchEvent(new CustomEvent('SUPABASE_SESSION_RESTORED', { detail: { session: null, error: err } }));
+    }
+})();
 
-    // TEST 1: playlists (QUAN TRỌNG NHẤT)
-    const { data: pl, error: ple } = await supabase
-        .from('playlists')
-        .select('id, name')
-        .eq('user_id', user.id)
-        .limit(1);
-    console.log('%c📋 playlists SELECT:', 
-        ple ? `%c❌ ${ple.message}` : `%c✅ OK (${pl?.length} rows)`,
-        ple ? 'color: red' : 'color: lime'
-    );
+const checkLogoutFlag = () => {
+    if (localStorage.getItem('manh-music-logout') === 'true') {
+        console.log('Global logout flag detected — blocking auth');
+        return true;
+    }
+    return false;
+};
 
-    // TEST 2: tracks
-    const { data: tr, error: tre } = await supabase
-        .from('tracks')
-        .select('id')
-        .limit(1);
-    console.log('%c🎵 tracks SELECT:', 
-        tre ? `%c❌ ${tre.message}` : '%c✅ OK',
-        tre ? 'color: red' : 'color: lime'
-    );
-
-    // TEST 3: users (profile)
-    const { data: us, error: use } = await supabase
-        .from('users')
-        .select('id')
-        .eq('id', user.id)
-        .single();
-    console.log('%c👤 users SELECT (own):', 
-        use ? `%c❌ ${use.message}` : '%c✅ OK',
-        use ? 'color: red' : 'color: lime'
-    );
-
-    console.log('%c🏁 TEST RLS HOÀN TẤT', 'color: #ffd93d; font-size: 14px; font-weight: bold');
-}
+supabase.auth.onAuthStateChange((event, session) => {
+    if (localStorage.getItem('manh-music-logout') === 'true') {
+        console.log('onAuthStateChange ignored due to logout flag');
+        return;
+    }
+    console.log('client.js AUTH STATE CHANGED:', event, session?.user?.email ?? 'no user', 'at', new Date().toISOString());
+    window.currentUser = session?.user ?? null;
+    window.dispatchEvent(new CustomEvent('SUPABASE_AUTH_CHANGE', { detail: { event, session } }));
+});
 
 export { supabase };
 export default supabase;

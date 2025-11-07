@@ -1,7 +1,6 @@
 // app.js
 import { supabase } from '../supabase/client.js';
 import { renderPlaylists, createPlaylist } from './playlist.js';
-import { logout as authLogout } from './auth.js';
 
 console.log('App.js loaded');
 console.log('Supabase instance:', supabase ? 'Connected' : 'Not connected');
@@ -33,13 +32,75 @@ let isTransitioning = false;
 const FALLBACK_COVER = '/assets/default-cover.webp';
 let recentlyPaused = false;
 window.isPlaying = isPlaying;
-window.currentUser = null;
+window.currentUser = window.currentUser || null;
 
 window.appFunctions = window.appFunctions || {};
+// window.appFunctions.getCurrentUserId = async () => window.currentUser?.id || null;
+
 
 console.log('✅ appFunctions initialized');
 
 window.currentPlaylists = window.currentPlaylists || {};
+
+async function onSupabaseSessionRestored(e) {
+  const session = e?.detail?.session;
+  console.log('SUPABASE_SESSION_RESTORED received in app.js:', !!session?.user, session?.user?.email ?? null);
+
+  // Nếu có session => initialize app
+  if (session?.user) {
+    window.currentUser = session.user;
+    try {
+      // tránh double init
+      if (!window.appInitialized && !window.initializationInProgress) {
+        await initializeApp(session.user);
+        window.appInitialized = true;
+      } else {
+        console.log('App already initialized or in progress; skipping initializeApp');
+      }
+    } catch (err) {
+      console.error('Error initializing app after session restored:', err);
+    }
+  } else {
+    console.warn('No session after restore - redirecting to login if on protected page');
+    // Nếu đang ở player.html và không có session thì redirect
+    if (window.location.pathname.includes('player.html')) {
+      window.location.href = '/index.html';
+    }
+  }
+}
+
+// Lắng nghe event phát từ client.js
+window.addEventListener('SUPABASE_SESSION_RESTORED', onSupabaseSessionRestored);
+
+// Ngoài ra lắng nghe auth changes (ví dụ sau khi SIGNED_IN xảy ra)
+window.addEventListener('SUPABASE_AUTH_CHANGE', async (e) => {
+  const { event, session } = e.detail || {};
+  console.log('SUPABASE_AUTH_CHANGE in app.js:', event, session?.user?.email ?? null);
+  if (event === 'SIGNED_IN' && session?.user) {
+    window.currentUser = session.user;
+    // Khởi tạo hoặc reinit app
+    await initializeApp(session.user);
+    window.appInitialized = true;
+  } else if (event === 'SIGNED_OUT') {
+    // cleanup
+    resetAllCaches?.();
+  }
+});
+
+// Global fallback cho session events
+window.addEventListener('load', () => {
+    if (!window.currentUser && window.supabase) {
+        console.log('🔄 App.js load fallback: Checking session');
+        window.supabase.auth.getUser().then(({ data: { user } }) => {
+            if (user && !window.currentUser) {
+                window.currentUser = user;
+                console.log('✅ App.js fallback user set:', user.id);
+                initializeApp(user);
+            }
+        });
+    }
+});
+
 
 window.addEventListener('beforeunload', () => {
     // Reset tất cả cache flags
@@ -107,6 +168,28 @@ if (window.location.hostname === 'localhost') {
         }
     });
 }
+
+supabase.auth.getSession().then(({ data: { session }, error }) => {
+    if (!window.currentUser) {
+        console.log('🔄 App.js: Force retry getSession after 500ms');
+        setTimeout(() => {
+            supabase.auth.getSession().then(({ data: { session }, error }) => {
+                console.log('🔄 Force getSession result:', !!session?.user, session?.user?.email || 'null');
+                if (session?.user && !window.currentUser) {
+                    window.currentUser = session.user;
+                    console.log('✅ App.js force session restored:', session.user.email);
+                    // Manual trigger init nếu DOM ready
+                    if (document.readyState === 'complete' && typeof initializeApp === 'function') {
+                        initializeApp(session.user);
+                    }
+                } else if (error) {
+                    console.error('Force getSession error:', error);
+                    localStorage.removeItem('sb-lezswjtnlsmznkgrzgmu-auth-token');  // Clear corrupt
+                }
+            });
+        }, 500);
+    }
+}).catch(err => console.error('Force getSession failed:', err));
 
 function togglePlayPause() {
     console.log('🎵 togglePlayPause called, current state:', {
@@ -760,7 +843,7 @@ async function updatePlayHistory(trackId) {
 
 window.renderPlayHistory = async function() {
     await loadRecentHistory();
-    await loadHistoryTracks(true); 
+    // await loadHistoryTracks(true); 
 };
 
 async function loadUserPlaylists(forceRefresh = false) {
@@ -811,9 +894,63 @@ async function loadUserPlaylists(forceRefresh = false) {
         console.log('13. loadUserPlaylists FINISHED');
     }
 }
-
-
 window.appFunctions.loadUserPlaylists = window.loadUserPlaylists;
+
+window.renderRecentHistory = async function() {
+    const container = document.getElementById('historyTrackList');
+    if (!container) return;
+
+    const user = window.currentUser;
+    if (!user) {
+        container.innerHTML = '<p class="empty-message">Vui lòng đăng nhập.</p>';
+        return;
+    }
+
+    try {
+        const { data: history, error } = await supabase
+            .from('history')
+            .select(`
+                track_id,
+                played_at,
+                tracks (
+                    id, title, artist, cover_url, file_url
+                )
+            `)
+            .eq('user_id', user.id)
+            .order('played_at', { ascending: false })
+            .limit(5);
+
+        if (error) throw error;
+
+        if (!history || history.length === 0) {
+            container.innerHTML = '<p class="empty-message">Chưa có bài hát nào được phát gần đây.</p>';
+            return;
+        }
+
+        container.innerHTML = history.map((item, i) => `
+            <div class="track-item playable-track" onclick='event.stopPropagation(); window.playTrack(${JSON.stringify(item.tracks)}, [], -1)'>
+                <div class="track-info">
+                    <span class="track-index">${i + 1}</span>
+                    <img src="${item.tracks.cover_url || '/assets/default-cover.webp'}" 
+                         class="track-cover" onerror="this.src='/assets/default-cover.webp'">
+                    <div class="track-details">
+                        <div class="track-name">${escapeHtml(item.tracks.title)}</div>
+                        <div class="track-artist">${escapeHtml(item.tracks.artist)}</div>
+                    </div>
+                </div>
+                <div class="track-actions">
+                    <button class="btn-action" onclick="event.stopPropagation(); window.appFunctions.togglePlaylistDropdown(this, '${item.tracks.id}')">
+                        <i class="fas fa-plus"></i>
+                    </button>
+                </div>
+            </div>
+        `).join('');
+
+    } catch (error) {
+        console.error('Lỗi tải lịch sử gần đây:', error);
+        container.innerHTML = '<p class="error-message">Lỗi tải lịch sử.</p>';
+    }
+};
 
 window.loadTopTracks = async function(limit = 10) {
     try {
@@ -884,36 +1021,6 @@ window.renderRecommendations = async function() {
     `).join('');
 };
 
-async function loadFreshPlaylists() {
-    try {
-        const user = window.currentUser;
-        if (!user) return;
-
-        const { data: playlists, error } = await supabaseQueryWithRetry(() =>
-            supabase
-                .from('playlists')
-                .select('id, name, icon, color, cover_url')
-                .eq('user_id', user.id)
-        );
-        
-        if (error) throw error;
-        
-        cachedPlaylists = playlists || [];
-        console.log(`✅ Loaded ${playlists.length} playlists (fresh)`);
-        
-        // SỬA: Dùng renderPlaylists thay vì displayPlaylists
-        const playlistGrid = document.getElementById('playlistGrid');
-        if (playlistGrid) {
-            renderPlaylists(playlists, playlistGrid);
-        }
-        
-    } catch (error) {
-        console.error('❌ Failed to load fresh playlists:', error);
-    } finally {
-        window.playlistsLoadFlag = false;
-    }
-}
-
 function openPlaylistDetail(playlistId) {
     if (window.switchTab) {
         window.switchTab('detail-playlist', playlistId);
@@ -940,7 +1047,7 @@ async function handleCreatePlaylistSubmit(event) {
    
     const user = window.currentUser;
     if (!user) {
-        console.error('Lỗi: Người dùng chưa đăng nhập hoặc lỗi xác thực:', userError);
+        console.error('Lỗi: Người dùng chưa đăng nhập hoặc lỗi xác thực!');
         alert('Vui lòng đăng nhập để tạo danh sách phát!');
         return;
     }
@@ -955,7 +1062,7 @@ async function handleCreatePlaylistSubmit(event) {
         
         // Upload cover nếu có
         if (playlistCoverFile) {
-            const uploadedUrl = await uploadPlaylistCover(data.user.id, null, playlistCoverFile);
+            const uploadedUrl = await uploadPlaylistCover(user.id, null, playlistCoverFile);
             if (uploadedUrl) {
                 playlistData.cover_url = uploadedUrl;
             }
@@ -1123,9 +1230,8 @@ async function testSupabaseConnection() {
         { 
             name: 'Authentication', 
             test: async () => {
-                const result = window.currentUser;
-                if (result.error) throw result.error;
-                return result;
+                if (!window.currentUser) throw new Error('No user logged in');
+                return window.currentUser;
             }
         },
         { 
@@ -1194,27 +1300,29 @@ function showConnectionWarning() {
 
 
 window.appFunctions = {
-    loadAndOpenProfileModal: loadAndOpenProfileModal,
-    initializePlayerControls: initializePlayerControls,
-    navigateTo: navigateTo,
-    initProfileModal: initProfileModal,
-    handleProfileSubmit: handleProfileSubmit,
+    ...window.appFunctions,
+    loadAndOpenProfileModal,
+    initializePlayerControls,
+    navigateTo,
+    initProfileModal,
+    handleProfileSubmit,
     handleLogout: window.handleLogout,
-    togglePlayPause: togglePlayPause,
+    togglePlayPause,
     playTrack: window.playTrack,
-    loadUserPlaylists: loadUserPlaylists,
-    loadHistoryTracks: loadHistoryTracks,
+    loadUserPlaylists,
+    loadHistoryTracks,
     playNextTrack: window.playNextTrack,
     playPreviousTrack: window.playPreviousTrack,
     searchTracks: window.searchTracks,
     loadMyUploads: window.loadMyUploads,
     loadPlaylistTracks: window.loadPlaylistTracks,
-    openPlaylistDetail: openPlaylistDetail,
+    openPlaylistDetail,
     togglePlaylistDropdown: window.togglePlaylistDropdown,
     deleteTrack: window.deleteTrack,
     addTrackToPlaylist: window.appFunctions.addTrackToPlaylist,
     createNewPlaylist: window.appFunctions.createNewPlaylist,
-    closeModal: window.closeModal
+    closeModal: window.closeModal,
+    getCurrentUserId 
 };
 
 window.loadPlaylistTracks = async function(playlistId, shouldPlay = false) {
@@ -1297,31 +1405,38 @@ window.appFunctions.loadPlaylistTracks = window.loadPlaylistTracks;
 
 async function testRLSPolicies() {
     const user = window.currentUser;
-    console.log('🧪 Testing RLS Policies for user:', user?.id);
-    
-    // Test SELECT từ tracks
-    const { data: tracks, error: tracksError } = await supabase
-        .from('tracks')
-        .select('*')
-        .limit(1);
-    console.log('Tracks SELECT:', tracksError ? '❌ ' + tracksError.message : '✅ OK');
-    
-    // Test SELECT từ users
-    const { data: users, error: usersError } = await supabase
-        .from('users')
-        .select('*')
-        .eq('id', user?.id)
-        .single();
-    console.log('Users SELECT:', usersError ? '❌ ' + usersError.message : '✅ OK');
-}
+    if (!user) {
+        console.warn('⏳ Bỏ qua testRLS – chưa có user');
+        return;
+    }
 
-// Gọi hàm test khi app khởi chạy
-testRLSPolicies();
+    console.log('🧪 Testing RLS Policies for user:', user.id);
+
+    try {
+        // Test SELECT từ tracks
+        const { error: tracksError } = await supabase
+            .from('tracks')
+            .select('*')
+            .limit(1);
+        console.log('Tracks SELECT:', tracksError ? + tracksError.message : '✅ OK');
+
+        // Test SELECT từ users
+        const { error: usersError } = await supabase
+            .from('users')
+            .select('*')
+            .eq('id', user.id)
+            .single();
+        console.log('Users SELECT:', usersError ? + usersError.message : '✅ OK');
+    } catch (err) {
+        console.error('Lỗi testRLS:', err);
+    }
+}
 
 async function getCurrentUserId() {
     const user = window.currentUser;
     return user?.id;
 }
+window.appFunctions.getCurrentUserId = getCurrentUserId;
 
 window.displayTracks = function(tracks, container) {
     if (!container) return;
@@ -1476,7 +1591,7 @@ async function initProfileModal() {
         return;
     }
 
-    console.log('Fetching profile for user ID:', user.id, 'Type:', typeof user.id);
+    console.log('Fetching profile for user ID:', user.id);
 
     let { data: profile, error: selectError } = await supabase
         .from('users')
@@ -1498,7 +1613,8 @@ async function initProfileModal() {
                     email: user.email || 'noemail@example.com',
                     username: defaultUsername,
                     birthday: null,
-                    avatar_url: null
+                    avatar_url: null,
+                    updated_at: new Date().toISOString()   // ✅ thêm updated_at
                 }])
                 .select('username, birthday, avatar_url')
                 .single();
@@ -1945,8 +2061,9 @@ window.loadMyUploads = async function(forceRefresh = false) {
 
 
 window.loadHomePage = async function() {
+    console.log('CALL loadHomePage, currentUser:', window.currentUser, 'at', performance.now());
     if (homePageLoaded) {
-        console.log('🔄 Home page already loaded, skipping');
+        console.log('Home page already loaded, skipping');
         return;
     }
     
@@ -1957,7 +2074,7 @@ window.loadHomePage = async function() {
     }
    
     try {
-        console.log('🚀 Starting loadHomePage...');
+        console.log('Starting loadHomePage...');
         homePageLoaded = true;
         
         // 1. Load HTML structure TRƯỚC
@@ -1965,55 +2082,56 @@ window.loadHomePage = async function() {
         if (!response.ok) throw new Error('Không thể tải home-content.html');
         const htmlContent = await response.text();
         mainContentArea.innerHTML = htmlContent;
-        console.log('✅ Home content loaded');
+        console.log('Home content loaded');
+
+        // Đợi các container sẵn sàng
+        await new Promise(resolve => {
+            let checks = 0;
+            const interval = setInterval(() => {
+                const playlist = document.getElementById('playlistGrid');
+                const history = document.getElementById('historyTrackList');
+                const recs = document.getElementById('recommendList');
+                if (history && recs) {
+                    clearInterval(interval);
+                    console.log('All home containers ready - proceeding sequential loads');
+                    resolve();
+                } else if (checks++ > 10) {
+                    console.warn('Some containers timeout - partial load proceeding');
+                    clearInterval(interval);
+                    resolve();
+                }
+            }, 300);
+        });
+
+        // 2. Load data theo THỨ TỰ TUẦN TỰ
+        console.log('Loading home page data sequentially...');
         
-        // 2. ĐỢI DOM ổn định - QUAN TRỌNG
-        await new Promise(resolve => setTimeout(resolve, 300));
-        
-        // 3. Load data theo THỨ TỰ TUẦN TỰ
-        console.log('🔄 Loading home page data sequentially...');
-        
-        // 3.1. Load playlists trước
-        console.log('📋 Step 1: Loading playlists...');
+        // BƯỚC 1: Danh sách phát
+        console.log('Step 1: Loading playlists...');
         if (window.appFunctions?.loadUserPlaylists) {
             await window.appFunctions.loadUserPlaylists();
+            console.log('Playlists loaded');
         }
-        
-        // 3.2. Load recent history  
-        console.log('📋 Step 2: Loading history...');
-        await window.renderPlayHistory();
-        console.log('✅ History loaded');
-        
-        // 3.3. Load uploads - ĐẢM BẢO container tồn tại
-        console.log('📋 Step 3: Loading uploads...');
-        const uploadsContainer = document.getElementById('myUploadsList');
-        if (uploadsContainer && window.loadMyUploads) {
-            await window.loadMyUploads();
-            console.log('✅ Uploads loaded');
-        } else {
-            console.warn('⚠️ Uploads container or function not ready');
-            // Thử lại sau 1 giây
-            setTimeout(() => {
-                const retryContainer = document.getElementById('myUploadsList');
-                if (retryContainer && window.loadMyUploads) {
-                    window.loadMyUploads();
-                    console.log('✅ Uploads loaded on retry');
-                }
-            }, 1000);
+
+        // BƯỚC 2: Lịch sử gần đây (5 bài)
+        console.log('Step 2: Loading recent history...');
+        if (window.renderRecentHistory) {
+            await window.renderRecentHistory();
+            console.log('Recent history loaded (5 tracks)');
         }
-        
-        // 3.4. Load recommendations
-        console.log('📋 Step 4: Loading recommendations...');
+
+        // BƯỚC 3: Gợi ý (10 bài top)
+        console.log('Step 3: Loading recommendations...');
         if (window.renderRecommendations) {
             await window.renderRecommendations();
-            console.log('✅ Recommendations loaded');
+            console.log('Recommendations loaded (10 tracks)');
         }
 
-        console.log('🎉 All home components ready');
+        console.log('All home components ready');
 
     } catch (error) {
-        console.error("❌ Lỗi tải giao diện Trang Chủ:", error);
-        homePageLoaded = false; // Reset flag để retry
+        console.error("Lỗi tải giao diện Trang Chủ:", error);
+        homePageLoaded = false;
         mainContentArea.innerHTML = `
             <div class="error-message">
                 <h3>Lỗi tải trang chủ</h3>
@@ -2024,66 +2142,20 @@ window.loadHomePage = async function() {
     }
 };
 
-async function loadRecommendations() {
-    if (recommendationsLoaded) {
-        console.log('Recommendations already loaded, skipping duplicate call');
-        return;
-    }
-    recommendationsLoaded = true;
-    console.log('--- Bắt đầu tải danh sách gợi ý ---');
-    const recommendList = document.getElementById('recommendList');
-    if (!recommendList) {
-        console.error('Không tìm thấy #recommendList');
-        recommendationsLoaded = false;  // Reset flag nếu fail
-        return;
-    }
-   
-    try {
-        console.log('🔄 Calling RPC get_unique_recommendations...');  // FIX: Log debug
-        const { data: recentTracks, error } = await supabase
-            .rpc('get_unique_recommendations', { limit_count: 20 });
-        if (error) {
-            console.error('RPC Error details:', error);
-            if (error.code === 'PGRST403') console.error('RLS violation - check policy for RPC');
-            throw error;
-        }
-        console.log(`✅ RPC success, ${recentTracks?.length || 0} tracks returned`);  // FIX: Log success
-       
-        if (recentTracks && recentTracks.length > 0) {
-            const uniqueRecs = recentTracks.filter((track, index, self) =>
-                index === self.findIndex(t =>
-                    t.title.toLowerCase().trim() === track.title.toLowerCase().trim() &&
-                    t.artist.toLowerCase().trim() === track.artist.toLowerCase().trim()
-                )
-            );
-            console.log(`Original recs: ${recentTracks.length}, Unique: ${uniqueRecs.length}`);
-            recommendList.innerHTML = '<h3>Gợi ý (' + uniqueRecs.length + ' bài unique)</h3>';
-            window.displayTracks(uniqueRecs, recommendList);
-            cachedRecommendedTracks = uniqueRecs;
-            window.currentPlaylistSource = 'Gợi ý cho bạn';
-            console.log(`Loaded ${uniqueRecs.length} unique recommendations`);
-        } else {
-            console.log('No recent tracks - empty recommendations');
-            recommendList.innerHTML = '<p class="empty-message">Hiện chưa có bài hát mới nào.</p>';
-        }
-    } catch (error) {
-        console.error('Lỗi tải gợi ý (catch):', error);
-        recommendList.innerHTML = `<p class="error-message">Không thể tải gợi ý: ${error.message}</p>`;
-    } finally {
-        recommendationsLoaded = false;  // Reset flag để retry sau
-    }
-}
 
 window.handleLogout = async function() {
-  try {
-    await supabase.auth.signOut();
+
+    console.log('Đăng xuất');
+
+    try {
+        await window.authFunctions.logout();
+    } catch (error) {
+        console.error('Lỗi khi đăng xuất:', error);
+    }
+    alert ('Bạn muốn đăng xuất?');
     window.currentUser = null;
     resetAllCaches();
-    window.location.href = '/index.html';
-  } catch (error) {
-    console.error('Lỗi khi đăng xuất:', error);
-    alert('Đăng xuất thất bại.');
-  }
+    // window.location.href = '/index.html';
 };
 window.appFunctions.handleLogout = window.handleLogout;
 
@@ -2424,6 +2496,7 @@ window.switchTab = function(tabName, param = null) {
     else if (tabName === 'search') targetId = 'search-section';
     else if (tabName === 'uploads') targetId = 'myUploadsSection';
     else if (tabName === 'profile') targetId = 'profile-section';
+    else if (tabName === 'recommend') targetId = 'recommend-section';
 
     const target = document.getElementById(targetId);
     if (target) {
@@ -2452,39 +2525,48 @@ window.switchTab = function(tabName, param = null) {
 };
 
 async function initializeApp(user) {
-  if (window.appInitialized || window.initializationInProgress) {
-    console.log('⏳ App already initialized or in progress, skipping');
-    return;
-  }
-
-  if (!user) {
-    console.error('❌ initializeApp called without user');
-    return;
-  }
-
-  window.initializationInProgress = true;
-  window.currentUser = user;
-
-  console.log('🚀 Initializing app for user:', user.email || user.id);
-
-  try {
-    await updateProfileDisplay(user);
-    await window.loadHomePage();
-    await window.switchTab('home');
-    await loadUserPlaylists(true);
-    await loadRecentHistory();
-    if (!window.userSessionLoaded) {
-      window.userSessionLoaded = true;
-      await resumeRecentTrack(user);
+    if (window.appInitialized || window.initializationInProgress) {
+        console.log('⏳ App already initialized or in progress, skipping');
+        return;
     }
-    window.appInitialized = true;
-    console.log('✅ App fully initialized');
-  } catch (error) {
-    console.error('❌ App initialization failed:', error);
-    showConnectionWarning?.();
-  } finally {
-    window.initializationInProgress = false;
-  }
+
+    if (!user) {
+        console.error('❌ initializeApp called without user');
+        return;
+    }
+
+    window.initializationInProgress = true;
+    window.currentUser = user;
+
+    console.log(' Initializing app for user:', user.email || user.id);
+
+    console.log('🧪 Testing connection...');
+    const connectionOk = await testSupabaseConnection();
+    await testRLSPolicies();  // Luôn chạy để log SELECT status
+    if (!connectionOk) {
+        console.error('🚨 Connection tests failed - showing warning');
+        showConnectionWarning();
+    } else {
+        console.log('✅ All connection tests passed');
+    }
+
+    try {
+        await updateProfileDisplay(user);
+        await window.loadHomePage();
+        await window.switchTab('home');
+        await loadUserPlaylists(true);
+        if (!window.userSessionLoaded) {
+            window.userSessionLoaded = true;
+            await resumeRecentTrack(user);
+        }
+        window.appInitialized = true;
+        console.log('✅ App fully initialized');
+    } catch (error) {
+        console.error('❌ App initialization failed:', error);
+        showConnectionWarning?.();
+    } finally {
+        window.initializationInProgress = false;
+    }
 }
 
 
@@ -2503,14 +2585,32 @@ function resetAllCaches() {
 document.addEventListener('DOMContentLoaded', async () => {
     console.log('📦 DOM Content Loaded');
     const { data: { session } } = await supabase.auth.getSession();
+    
+    console.log('SESSION AT DOMContentLoaded:', session, 'at', performance.now());
     if (session?.user) {
         window.currentUser = session.user;
-        await initializeApp(session.user);
+        if (!window.appInitialized) {   
+            await initializeApp(session.user);
+            window.appInitialized = true;
+        } else {
+            console.log('⏳ App đã init trước đó, bỏ qua DOMContentLoaded');
+        }
     } else {
-        console.warn('⚠️ No active session found — redirecting to login');
-        window.location.href = '/index.html';
+        console.warn('⚠️ No active session - but NOT redirecting (debug mode); force getUser');
+        // Force getUser thay vì redirect
+        supabase.auth.getUser().then(({ data: { user }, error }) => {
+            if (user) {
+                window.currentUser = user;
+                console.log('✅ DOMLoaded force getUser success:', user.id);
+                initializeApp(user);
+            } else {
+                console.error('getUser also failed:', error);
+                window.location.href = '/index.html';  // Chỉ redirect nếu fail hoàn toàn
+            }
+        });
     }
 
+    // Ngăn khởi tạo lặp lại
     if (window.appInitialized) {
         console.log('🔄 App already initialized, skipping DOMContentLoaded');
         return;
@@ -2597,17 +2697,18 @@ document.addEventListener('DOMContentLoaded', async () => {
 // Đăng ký listener cho mọi sự kiện auth (nên đặt ngay sau khi Supabase khởi tạo)
 supabase.auth.onAuthStateChange(async (event, session) => {
     console.log('⚙️ Auth state changed:', event, session?.user?.email || 'no user');
-
+    console.log('SIGNED_IN event, user:', session?.user, 'at', performance.now());
     if (event === 'SIGNED_IN' && session?.user) {
         console.log('✅ User signed in:', session.user.email);
         window.appInitialized = false;
         resetAllCaches?.();
         await initializeApp(session.user);
         window.appInitialized = true;
+        setTimeout(testRLSPolicies, 1000);
     }
 
     if (event === 'SIGNED_OUT') {
-        console.log('🚪 User signed out — resetting app');
+        console.log(' User signed out — resetting app');
         window.appInitialized = false;
         updateProfileDisplay?.(null);
         resetAllCaches?.();

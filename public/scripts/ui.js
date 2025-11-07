@@ -57,7 +57,6 @@ export async function loadHomeContent() {
     }
 }
 
-
 window.updatePlayerBar = function(track) {
     const cover = document.getElementById('trackCover');
     const title = document.getElementById('trackTitle');
@@ -187,10 +186,10 @@ window.sendAIQuery = async function(trackId, title, artist) {
             method: 'POST',
             headers: { 
                 'Content-Type': 'application/json',
-                'Authorization': `Bearer ${GROQ_API_KEY}`
+                'Authorization': `Bearer ${apiKey}`  // FIX: Dùng window.GROQ_API_KEY
             },
             body: JSON.stringify({
-                model: 'llama-3.1-8b-instant',  // ✅ FIX: Model thay thế (miễn phí, nhanh, không deprecate)
+                model: 'llama-3.1-8b-instant',  // Model ổn định, miễn phí
                 messages: [
                     { role: 'system', content: 'Bạn là trợ lý âm nhạc thân thiện, trả lời bằng tiếng Việt.' },
                     { role: 'user', content: prompt }
@@ -434,22 +433,56 @@ async function getNextTrackPreview() {
     return currentPlaylist[nextIndex] || null;
 }
 
+// THÊM FIX: Retry load home data sau components
+const tryLoadHome = async () => {  // Làm async để await getUser
+    console.log('🔧 ui.js retry check: currentUser?', !!window.currentUser, 'loadHomePage?', !!window.loadHomePage, 'user ID?', window.currentUser?.id);
+    
+    // FIX: Force restore user nếu chưa có (dùng getUser thay getSession cho fresh)
+    if (!window.currentUser && window.supabase) {
+        try {
+            console.log('🔄 ui.js: Force restoring user via getUser...');
+            const { data: { user }, error } = await window.supabase.auth.getUser();
+            if (error) {
+                console.error('❌ getUser failed:', error.message);
+            } else if (user) {
+                window.currentUser = user;
+                console.log('✅ ui.js: Forced user restore:', user.email, user.id);
+                // Dispatch event để trigger app.js listeners nếu cần
+                window.dispatchEvent(new CustomEvent('SUPABASE_SESSION_RESTORED', { detail: { session: { user } } }));
+            } else {
+                console.warn('⚠️ getUser returned no user - check token');
+            }
+        } catch (err) {
+            console.error('❌ Force getUser error:', err);
+        }
+    }
+    
+    if (window.currentUser && typeof window.loadHomePage === 'function') {
+        console.log('✅ ui.js: All ready - calling loadHomePage for user:', window.currentUser.id);
+        await window.loadHomePage();  // Await để chain full
+    } else if (window.currentUser && typeof loadHomeContent === 'function') {
+        console.warn('⚠️ loadHomePage not ready - fallback to partial loadHomeContent');
+        await loadHomeContent();  // Partial loads
+    } else {
+        // Retry max 15 lần (7.5s total)
+        if ((window.homeRetryCount || 0) < 15) {
+            window.homeRetryCount = (window.homeRetryCount || 0) + 1;
+            console.warn(`⏳ ui.js: Not ready (retry ${window.homeRetryCount}/15), waiting 500ms...`);
+            setTimeout(tryLoadHome, 500);
+        } else {
+            console.error('❌ ui.js: Max retries exceeded. Manual fixes:');
+            console.error('- Paste `supabase.auth.getUser().then(({data:{user}})=>{window.currentUser=user; window.loadHomePage();})` in console');
+            console.error('- Check localStorage token: `localStorage.getItem("sb-lezswjtnlsmznkgrzgmu-auth-token")`');
+        }
+    }
+};
+
 document.addEventListener('DOMContentLoaded', () => {
-    // Gọi nhúng Sidebar
     window.loadComponent('/components/sidebar.html', 'sidebar');
-    // Giả sử player-bar.html được nhúng vào footer
     window.loadComponent('/components/player-bar.html', 'playerBar'); 
     window.loadComponent('/home-content.html', 'mainContentArea');
-
-    setTimeout(() => {
-        if (typeof window.loadHomePage === 'function') {
-            window.loadHomePage();
-        } else {
-            console.warn('loadHomePage chưa sẵn sàng');
-        }
-    }, 500);
+    setTimeout(tryLoadHome, 500);
 });
-
 
 window.fetchLyrics = fetchLyrics; 
 window.getNextTrackPreview = getNextTrackPreview;
