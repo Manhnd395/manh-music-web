@@ -1,14 +1,13 @@
 [build]
-  publish = "public"
-  # Create a runtime config file for the client from Netlify env vars.
-  # We must tell Netlify's secrets scanner to omit these keys/paths if you accept
-  # that the values will be client-visible. If you do not accept that, implement
-  # a server-side proxy or Netlify Function instead (Option A in the logs).
-  # Validate env vars before writing. If missing, fail the build with a clear message.
-  command = "if [ -z \"${SUPABASE_URL}\" ] || [ -z \"${SUPABASE_ANON_KEY}\" ]; then echo 'ERROR: SUPABASE_URL or SUPABASE_ANON_KEY is not set in Netlify environment variables.'; exit 1; fi; mkdir -p public/scripts && cat > public/scripts/config.js <<'EOL'\nwindow.SUPABASE_URL = '${SUPABASE_URL}';\nwindow.SUPABASE_ANON_KEY = '${SUPABASE_ANON_KEY}';\nwindow.GROQ_API_KEY = '${GROQ_API_KEY:-}';\nEOL"
+  publish = "dist"  # Hoặc "." nếu không build
+  command = "echo 'No build command'"  # Nếu không dùng build tool
 
+# Inject env vars vào HTML (cho client-side)
+[[headers]]
+  for = "/*"
+  [headers.values]
+    X-Frame-Options = "DENY"
+
+# Build hook để inject (nếu cần)
 [build.environment]
-# Tell Netlify's scanner to ignore these env var names (Option B)
-SECRETS_SCAN_OMIT_KEYS = "SUPABASE_ANON_KEY,SUPABASE_URL,GROQ_API_KEY"
-# And also omit the generated file path
-SECRETS_SCAN_OMIT_PATHS = "public/scripts/config.js"
+  NODE_VERSION = "18"

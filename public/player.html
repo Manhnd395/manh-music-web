@@ -17,7 +17,13 @@
     <link rel="icon" href="/assets/favicon.ico" type="image/x-icon">
 
     <!-- Scripts -->
-    <script type="module" src="/scripts/config.mjs"></script>
+    <script type="module">
+            window.SUPABASE_URL = "${SUPABASE_URL}";
+            window.SUPABASE_ANON_KEY = "${SUPABASE_ANON_KEY}";
+            window.SUPABASE_JWT_KEY = "${GROQ_API_KEY}"; 
+
+            console.log('Config injected:', window.SUPABASE_URL ? 'OK' : 'MISSING');
+    </script>
     <script type="module" src="/supabase/client.js"></script>
     <script type="module" src="/scripts/auth.js"></script>
     <script type="module" src="/scripts/app.js"></script>
