@@ -1,9 +1,32 @@
-# Static site: Không build, publish toàn bộ repo
-[build]
-  publish = "."  # Publish thư mục gốc (tất cả files HTML/CSS/JS)
-  command = ""   # Không chạy build command
+# netlify.toml — Static site + Inject env vars vào HTML
 
-# Headers (tùy chọn, giữ nếu cần bảo mật)
+[build]
+  publish = "."      # Publish toàn bộ repo
+  command = ""       # Không build
+
+# === INJECT ENV VARS VÀO HTML ===
+[context.production]
+  environment = { 
+    SUPABASE_URL = "${SUPABASE_URL}",
+    SUPABASE_ANON_KEY = "${SUPABASE_ANON_KEY}",
+    GROQ_API_KEY = "${GROQ_API_KEY}"
+  }
+
+[context.deploy-preview]
+  environment = { 
+    SUPABASE_URL = "${SUPABASE_URL}",
+    SUPABASE_ANON_KEY = "${SUPABASE_ANON_KEY}",
+    GROQ_API_KEY = "${GROQ_API_KEY}"
+  }
+
+[context.branch-deploy]
+  environment = { 
+    SUPABASE_URL = "${SUPABASE_URL}",
+    SUPABASE_ANON_KEY = "${SUPABASE_ANON_KEY}",
+    GROQ_API_KEY = "${GROQ_API_KEY}"
+  }
+
+# Headers (tùy chọn)
 [[headers]]
   for = "/*"
   [headers.values]
